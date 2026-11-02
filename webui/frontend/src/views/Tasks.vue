@@ -1,0 +1,76 @@
+<script setup>
+import { computed, onActivated, onDeactivated, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useTasksStore } from '@/stores/tasks'
+import { useRuntimeStore } from '@/stores/runtime'
+import { useTokenRefreshStore } from '@/stores/tokenRefresh'
+import { getTokenRefreshJob, listRuns } from '@/api/register'
+import { fmtTime } from '@/api/request'
+import AccountTaskProgress from '@/components/AccountTaskProgress.vue'
+import { taskDisplayState } from '@/taskPresentation'
+const tasks = useTasksStore(), runtime = useRuntimeStore(), refreshStore = useTokenRefreshStore(), router = useRouter(), route = useRoute()
+const active = ref(false), tab = ref('active'), detail = ref(null), detailLoading = ref(false), detailError = ref(''), runHistory = ref([]), runError = ref('')
+const labels = {token_refresh:'Làm mới AT',token_check:'Kiểm tra AT',plus_check:'Kiểm tra gói',checkout_check:'Dò checkout',quota_check:'Kiểm tra quota'}
+const states = {queued:'Đang chờ',running:'Đang xử lý',stopping:'Đang dừng',completed:'Hoàn tất',completed_errors:'Đã xong — có lỗi',cancelled:'Đã dừng',failed:'Dừng do lỗi',interrupted:'Gián đoạn'}
+const isActive = job => ['queued','running','stopping'].includes(job?.state)
+const shown = computed(() => tab.value === 'active' ? tasks.activeJobs : tasks.jobs)
+const auto = computed(() => runtime.autoStatus || {})
+const autoActive = computed(() => auto.value.state === 'running' || auto.value.state === 'paused' || auto.value.workers?.length)
+const shownRuns = computed(() => tab.value === 'active' ? tasks.runs : runHistory.value)
+const fmt = value => Number(value || 0).toLocaleString('vi-VN')
+const percent = job => Math.min(100, job.total ? Math.round(job.completed / job.total * 100) : 0)
+const bytes = traffic => { if (!traffic) return 'Chưa đo'; const n = Number(traffic.rx || 0) + Number(traffic.tx || 0); return n < 1024 ? `${n} B` : n < 1048576 ? `${(n/1024).toFixed(1)} KB` : `${(n/1048576).toFixed(2)} MB` }
+const authFailures = computed(() => Object.entries(detail.value?.auth_error_counts || {}).map(([code,count]) => ({code,label:({account_disabled:'Tài khoản bị khóa',invalid_2fa:'Sai hoặc thiếu 2FA',invalid_password:'Sai mật khẩu',invalid_credentials:'Sai tài khoản / mật khẩu'})[code] || code,count})))
+const detailRunning = computed(() => isActive(detail.value))
+const planLabels = {free:'Free',plus_eligible:'Free có ưu đãi',plus_active:'Plus',pro_active:'Pro',go_active:'Go',team_active:'Team',business_active:'Business',enterprise_active:'Enterprise',edu_active:'Edu',multiple_plans:'Nhiều gói',token_invalid:'AT lỗi',banned:'Bị khóa',unknown:'Chưa rõ',error:'Lỗi kiểm tra'}
+const detailPlanSummary = computed(() => Object.entries(detail.value?.counts || {}).filter(([key,count]) => planLabels[key] && count).map(([key,count]) => `${planLabels[key]} ${fmt(count)}`).join(' · '))
+async function loadDetail(id) {
+  detailLoading.value = true; detailError.value = ''
+  try { const {job} = await getTokenRefreshJob(id); if (route.query.job === id) detail.value = job }
+  catch (error) { detailError.value = error.message }
+  finally { detailLoading.value = false }
+}
+function openDetail(job) { router.replace({path:'/tasks',query:{job:job.job_id}}) }
+async function loadRuns() {
+  try { const {items} = await listRuns(50,{summary:true}); runHistory.value = items || []; runError.value = '' }
+  catch (error) { runError.value = error.message }
+}
+async function reload() { await tasks.refresh(); if (tab.value === 'recent') await loadRuns(); if (route.query.job) await loadDetail(String(route.query.job)) }
+async function stopDetail() {
+  try {
+    await ElMessageBox.confirm('Dừng nhận tài khoản tiếp theo và chờ các tài khoản đang xử lý hoàn tất. Kết quả đã lưu được giữ nguyên.', 'Dừng tác vụ?', {type:'warning',confirmButtonText:'Dừng tác vụ',cancelButtonText:'Tiếp tục chạy'})
+  } catch { return }
+  try { await refreshStore.follow(detail.value.job_id); await refreshStore.cancel(); detail.value = refreshStore.job; await tasks.refresh() }
+  catch (error) { ElMessage.warning(refreshStore.connectionError || error.message) }
+}
+function openAccounts() { router.push({path:'/registered',query:{job:detail.value.job_id}}) }
+function filterErrors(error) {
+  const code = error?.error_code || ''
+  const filter = ['invalid_credentials','invalid_password','account_not_found','missing_password'].includes(code) ? 'auth_credentials'
+    : ['invalid_2fa','invalid_2fa_secret','missing_2fa'].includes(code) ? 'auth_2fa' : code === 'account_disabled' ? 'auth_disabled'
+    : ['email_otp_required','email_mailbox_unavailable','email_otp_timeout'].includes(code) ? 'email_otp_hold' : 'refresh_errors'
+  router.push({path:'/registered',query:{view:'errors',error:filter}})
+}
+watch(() => route.query.job, id => { detail.value = null; if (id && active.value) loadDetail(String(id)) })
+watch(() => tasks.updatedAt, () => { if (active.value && detailRunning.value && route.query.job) loadDetail(String(route.query.job)) })
+watch(tab, value => { if (value === 'recent') loadRuns() })
+onActivated(() => { active.value = true; if (route.query.job) loadDetail(String(route.query.job)); tasks.refresh(); if (tab.value === 'recent') loadRuns() })
+onDeactivated(() => { active.value = false })
+</script>
+<template>
+  <div class="page tasks-page">
+    <div class="page-heading"><div><h1>Tác vụ</h1><p>Theo dõi đăng ký, làm mới AT và kiểm tra tài khoản.</p></div><el-button :loading="tasks.loading" @click="reload"><el-icon><Refresh /></el-icon>Cập nhật</el-button></div>
+    <el-alert v-if="tasks.error" :title="tasks.error" type="warning" :closable="false" show-icon />
+    <div class="tasks-summary"><div><span>Tác vụ tài khoản đang chạy</span><strong>{{ fmt(tasks.activeJobs.length) }}</strong></div><div><span>Đăng ký đang xử lý</span><strong>{{ fmt(tasks.runs.length) }}</strong></div><div><span>Cập nhật lúc</span><strong class="tasks-updated">{{ tasks.updatedAt ? new Date(tasks.updatedAt).toLocaleTimeString('vi-VN') : 'Đang tải…' }}</strong></div></div>
+    <section v-if="autoActive" class="task-auto-card"><div><el-icon :size="21"><Sparkles /></el-icon><div><strong>Đăng ký hàng loạt</strong><span>{{ auto.state === 'paused' ? 'Đã tạm dừng nhận thêm' : 'Đang hoạt động' }} · {{ fmt(auto.workers?.length) }} worker</span></div></div><div class="task-auto-counts"><span>Thành công <b>{{ fmt(auto.registered_ok) }}</b></span><span>Thất bại <b>{{ fmt(auto.registered_fail) }}</b></span></div><el-button @click="router.push('/auto')">Xem và điều khiển<el-icon><ChevronDown style="transform:rotate(-90deg)" /></el-icon></el-button></section>
+    <template v-if="route.query.job"><el-skeleton v-if="detailLoading && !detail" :rows="3" animated /><el-alert v-if="detailError" :title="detailError" type="warning" :closable="false" /><AccountTaskProgress v-if="detail" :job="detail" :title="labels[detail.operation] || 'Tác vụ tài khoản'" :running="detailRunning" :cancelling="refreshStore.cancelling" :stop-requested="detail.cancel_requested || (refreshStore.job?.job_id === detail.job_id && refreshStore.stopRequested)" :auth-failures="authFailures" :plan-summary="detailPlanSummary" @reload="loadDetail(detail.job_id)" @stop="stopDetail" @filter="filterErrors" /><div v-if="detail" class="task-detail-actions"><el-button @click="openAccounts">Mở trong Tài khoản</el-button><el-button text @click="router.replace('/tasks')">Đóng chi tiết</el-button></div></template>
+    <div class="tasks-tabs" role="tablist" aria-label="Phạm vi tác vụ"><button role="tab" :aria-selected="tab === 'active'" :class="{active:tab === 'active'}" @click="tab = 'active'">Đang chạy <b>{{ tasks.activeJobs.length + tasks.runs.length }}</b></button><button role="tab" :aria-selected="tab === 'recent'" :class="{active:tab === 'recent'}" @click="tab = 'recent'">Gần đây</button><router-link to="/runs">Nhật ký đăng ký<el-icon><ChevronDown style="transform:rotate(-90deg)" /></el-icon></router-link></div>
+    <section class="tasks-list" aria-label="Tác vụ tài khoản"><div class="tasks-section-heading"><h2>Tác vụ tài khoản</h2><span v-if="tab === 'recent'">{{ tasks.jobs.length }} đợt gần nhất</span></div><el-empty v-if="!shown.length" :description="tasks.loading ? 'Đang tải tác vụ…' : tasks.error ? 'Chưa lấy được tác vụ' : tab === 'active' ? 'Không có tác vụ tài khoản đang chạy' : 'Chưa có tác vụ'" :image-size="55" /><button v-for="job in shown" :key="job.job_id" class="task-list-item" :class="[{selected:detail?.job_id === job.job_id}, taskDisplayState(job)]" @click="openDetail(job)"><span class="task-list-icon"><el-icon :size="19"><Refresh v-if="job.operation === 'token_refresh'" /><ScanSearch v-else /></el-icon></span><span class="task-list-copy"><strong>{{ labels[job.operation] || job.operation }}</strong><small>{{ fmtTime(job.created_at) }}</small><span class="task-list-bar"><i :style="{width:percent(job)+'%'}" /></span></span><span class="task-list-progress"><strong>{{ fmt(job.completed) }} / {{ fmt(job.total) }}</strong><small>{{ fmt(job.succeeded) }} thành công · {{ fmt(job.failed) }} lỗi</small></span><span class="task-list-state" :class="taskDisplayState(job)">{{ states[taskDisplayState(job)] || job.state }}<small>{{ bytes(job.traffic) }}</small></span><el-icon :size="15"><ChevronDown style="transform:rotate(-90deg)" /></el-icon></button></section>
+    <section class="tasks-list" aria-label="Tác vụ đăng ký"><div class="tasks-section-heading"><h2>Đăng ký tài khoản</h2><span>{{ tab === 'recent' ? '50 lượt gần nhất' : `${tasks.runs.length} đang chạy` }}</span></div><el-alert v-if="runError" :title="runError" type="warning" :closable="false" /><el-empty v-if="!shownRuns.length" :description="tab === 'active' ? 'Không có tài khoản đang đăng ký' : 'Chưa có lượt đăng ký'" :image-size="55" /><div v-for="run in shownRuns" :key="run.run_id" class="registration-item"><span class="registration-email" translate="no">{{ run.email }}</span><span>{{ fmtTime(run.started_at) }}</span><span class="task-list-state" :class="run.status">{{ ({running:'Đang xử lý',done:'Hoàn tất',failed:'Thất bại',interrupted:'Gián đoạn'})[run.status] || run.status }}</span><span>{{ run.traffic_rx == null && run.traffic_tx == null ? 'Chưa đo' : bytes({rx:run.traffic_rx,tx:run.traffic_tx}) }}</span></div></section>
+  </div>
+</template>
+<style scoped>
+.tasks-page{display:flex;flex-direction:column;gap:18px}.tasks-page .page-heading{margin:0}.tasks-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--app-border);background:var(--app-card-bg);border-radius:12px;padding:20px;gap:20px}.tasks-summary>div{display:flex;flex-direction:column;gap:9px;font-size:11px;color:var(--app-text-muted)}.tasks-summary strong{font-size:26px;color:var(--app-title);font-weight:600}.tasks-summary .tasks-updated{font-size:18px}.task-auto-card{display:flex;align-items:center;gap:20px;padding:18px 20px;border:1px solid var(--brand-border);border-radius:12px;background:var(--brand-bg)}.task-auto-card>div:first-child{display:flex;align-items:center;gap:12px;color:var(--brand)}.task-auto-card>div:first-child>div{display:flex;flex-direction:column;gap:6px;font-size:13px}.task-auto-card span{font-size:11px;color:var(--app-text-muted)}.task-auto-counts{display:flex;gap:16px;margin-left:auto}.task-auto-counts b{color:var(--app-title);margin-left:5px}.tasks-tabs{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--app-border);padding-bottom:10px}.tasks-tabs button{border:0;border-radius:7px;padding:10px 13px;background:transparent;font:inherit;font-size:12px;color:var(--app-text-muted);cursor:pointer}.tasks-tabs button.active{color:var(--brand);background:var(--brand-bg);font-weight:600}.tasks-tabs b{margin-left:6px}.tasks-tabs a{display:flex;align-items:center;gap:6px;margin-left:auto;font-size:11px;color:var(--brand);text-decoration:none}.tasks-list{background:var(--app-card-bg);border:1px solid var(--app-border);border-radius:12px;overflow:hidden}.tasks-section-heading{display:flex;align-items:center;justify-content:space-between;padding:17px 20px;border-bottom:1px solid var(--app-border)}.tasks-section-heading h2{margin:0;font-size:13px;font-weight:600}.tasks-section-heading>span{color:var(--app-text-muted);font-size:11px}.task-list-item{width:100%;display:grid;grid-template-columns:36px minmax(150px,1fr) 160px 140px 15px;align-items:center;gap:15px;background:transparent;border:0;border-bottom:1px solid var(--app-border);text-align:left;color:var(--app-title);padding:18px 20px;cursor:pointer;font:inherit}.task-list-item:last-child{border-bottom:0}.task-list-item:hover,.task-list-item.selected{background:var(--app-card-surface)}.task-list-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:var(--brand-bg);color:var(--brand)}.task-list-copy,.task-list-progress,.task-list-state{display:flex;flex-direction:column;gap:7px;font-size:12px}.task-list-copy strong,.task-list-progress strong{font-weight:550}.task-list-copy small,.task-list-progress small,.task-list-state small{font-size:10px;color:var(--app-text-muted)}.task-list-bar{height:4px;background:var(--app-border);border-radius:4px;overflow:hidden;max-width:240px}.task-list-bar i{display:block;height:100%;background:var(--brand)}.task-list-state{color:var(--app-text-muted);font-size:11px}.task-list-state.running,.task-list-state.completed,.task-list-state.done{color:var(--color-success)}.task-list-state.failed,.task-list-state.interrupted{color:var(--color-danger)}.task-list-state.stopping{color:var(--color-warning)}.registration-item{display:grid;grid-template-columns:minmax(0,1fr) 150px 110px 90px;gap:12px;padding:16px 20px;border-bottom:1px solid var(--app-border);font-size:11px;color:var(--app-text-muted);align-items:center}.registration-item:last-child{border:0}.registration-email{color:var(--app-title);overflow-wrap:anywhere}.task-detail-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:-12px}
+@media(max-width:680px){.tasks-summary{padding:16px;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}.tasks-summary>div:last-child{grid-column:1/-1;flex-direction:row;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--app-border)}.tasks-summary .tasks-updated{font-size:12px}.task-auto-card{flex-wrap:wrap;gap:15px}.task-auto-counts{margin-left:0}.task-auto-card>.el-button{width:100%;margin:0}.tasks-tabs{flex-wrap:wrap;gap:4px}.tasks-tabs a{margin-left:0;padding:8px 12px}.task-list-item{grid-template-columns:30px minmax(0,1fr) 105px;gap:12px;padding:16px}.task-list-item>.el-icon{display:none}.task-list-progress{grid-column:2;grid-row:2}.task-list-state{grid-column:3;grid-row:1/3;align-items:flex-end;text-align:right}.task-list-copy{grid-column:2}.task-list-item>.task-list-icon{grid-row:1/3}.registration-item{grid-template-columns:minmax(0,1fr) 90px;padding:16px}.registration-item>span:nth-child(2){grid-column:1;grid-row:2}.registration-item>.task-list-state{grid-column:2;grid-row:1;text-align:right}.registration-item>span:last-child{text-align:right}.tasks-section-heading{padding:16px}}
+</style>

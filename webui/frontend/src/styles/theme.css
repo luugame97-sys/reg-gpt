@@ -1,0 +1,639 @@
+/* ==========================================================================
+   Workspace design system
+   Adaptive Dark / Light Mode · Inter Typography · Workspace Teal Accent
+   ========================================================================== */
+
+:root, html.dark {
+  /* ── Dark Mode Tokens (Default: Deep Teal) ── */
+  --app-content-bg: #101b20;
+  --app-sidebar-bg: #132127;
+  --app-header-bg: #101b20;
+  --app-card-bg: #18292f;
+  --app-card-surface: #20343b;
+  --app-card-hover: #294149;
+  --app-border: rgba(255, 255, 255, 0.08);
+  --app-border-subtle: rgba(255, 255, 255, 0.04);
+  --app-border-hover: rgba(255, 255, 255, 0.16);
+  --app-border-focus: #64c8b9;
+
+  /* Typography Colors (High-Contrast WCAG AA Compliant) */
+  --app-title: #f8fafc;           /* Crisp bright text */
+  --app-text-regular: #dfe6e9;    /* High readability body text */
+  --app-text-muted: #a3b8c0;      /* Clean readable silver slate (6.5:1 contrast) */
+  --app-text-dim: #8b9fa8;        /* Subtle secondary caption */
+
+  /* Signature Brand Accent: Workspace Teal */
+  --brand: #64c8b9;
+  --brand-soft: #44b6a5;
+  --brand-fg: #092b27;
+  --brand-bg: rgba(100, 200, 185, 0.10);
+  --brand-hover: #89d9cd;
+  --brand-glow: rgba(100, 200, 185, 0.18);
+
+  /* Status Colors (Restrained semantic palette) */
+  --color-success: #4ade9b;
+  --color-success-bg: rgba(74, 222, 155, 0.12);
+  --color-success-border: rgba(74, 222, 155, 0.3);
+
+  --color-warning: #f0b84e;
+  --color-warning-bg: rgba(240, 184, 78, 0.12);
+  --color-warning-border: rgba(240, 184, 78, 0.3);
+
+  --color-danger: #ff5f57;
+  --color-danger-bg: rgba(255, 95, 87, 0.12);
+  --color-danger-border: rgba(255, 95, 87, 0.3);
+
+  --color-info: #6bb6ff;
+  --color-info-bg: rgba(107, 182, 255, 0.12);
+  --color-info-border: rgba(107, 182, 255, 0.3);
+
+  --color-online: #4aded0;
+
+  /* Elevation & Shadows */
+  --app-card-radius: 14px;
+  --app-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --app-shadow-sm: 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+  --app-shadow-md: 0 12px 32px -4px rgba(0, 0, 0, 0.7);
+
+  /* Terminal / Log */
+  --app-log-bg: #090c10;
+  --app-log-text: #dfe6e9;
+
+  /* Element Plus Theme Token Overrides */
+  --el-color-primary: #64c8b9;
+  --el-color-primary-light-3: #89d9cd;
+  --el-color-primary-light-5: #3e766e;
+  --el-color-primary-light-7: #2c514c;
+  --el-color-primary-light-8: #233f3b;
+  --el-color-primary-light-9: #1a3430;
+  --el-color-primary-dark-2: #44b6a5;
+
+  --el-bg-color: #101b20;
+  --el-bg-color-page: #101b20;
+  --el-bg-color-overlay: #18292f;
+
+  --el-border-color: rgba(255, 255, 255, 0.08);
+  --el-border-color-light: rgba(255, 255, 255, 0.08);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.05);
+  --el-border-color-extra-light: rgba(255, 255, 255, 0.03);
+
+  --el-text-color-primary: #f8fafc;
+  --el-text-color-regular: #dfe6e9;
+  --el-text-color-secondary: #a3b8c0;
+  --el-text-color-placeholder: #8b9fa8;
+
+  --el-fill-color: #20343b;
+  --el-fill-color-light: #18292f;
+  --el-fill-color-lighter: #132127;
+  --el-fill-color-blank: #18292f;
+
+  --el-mask-color: rgba(8, 9, 12, 0.85);
+}
+
+/* ── Light Mode Token Overrides (High-Contrast Clean Executive SaaS) ── */
+html:not(.dark) {
+  --app-content-bg: #f5f7f8;
+  --app-sidebar-bg: #ffffff;
+  --app-header-bg: #ffffff;
+  --app-card-bg: #ffffff;
+  --app-card-surface: #f2f5f6;
+  --app-card-hover: #f8fafc;
+  --app-border: #dfe6e9;
+  --app-border-subtle: #f2f5f6;
+  --app-border-hover: #cbd5e1;
+  --app-border-focus: #0d8275;
+
+  --app-title: #172d36;           /* Deep crisp slate */
+  --app-text-regular: #405660;    /* Clear slate body */
+  --app-text-muted: #5e727c;      /* Slate-500 high contrast */
+  --app-text-dim: #8b9da5;        /* Slate-400 */
+
+  --brand: #0d8275;               /* Teal accent */
+  --brand-soft: #188f81;
+  --brand-fg: #ffffff;
+  --brand-bg: #e9f5f2;
+  --brand-hover: #09695f;
+  --brand-glow: rgba(13, 130, 117, 0.12);
+
+  --color-success: #16a34a;
+  --color-success-bg: #dcfce7;
+  --color-success-border: #bbf7d0;
+
+  --color-warning: #d97706;
+  --color-warning-bg: #fef3c7;
+  --color-warning-border: #fde68a;
+
+  --color-danger: #dc2626;
+  --color-danger-bg: #fee2e2;
+  --color-danger-border: #fecaca;
+
+  --color-info: #0284c7;
+  --color-info-bg: #e0f2fe;
+  --color-info-border: #bae6fd;
+
+  --color-online: #0d9488;
+
+  --app-shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --app-shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.07);
+  --app-shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+
+  --app-log-bg: #172d36;
+  --app-log-text: #f8fafc;
+
+  --el-color-primary: #0d8275;
+  --el-color-primary-light-3: #55a79c;
+  --el-color-primary-light-5: #8bc4bb;
+  --el-color-primary-light-7: #b9ded7;
+  --el-color-primary-light-8: #d5ece7;
+  --el-color-primary-light-9: #e9f5f2;
+  --el-color-primary-dark-2: #09695f;
+  --el-bg-color: #f8fafc;
+  --el-bg-color-page: #f8fafc;
+  --el-bg-color-overlay: #ffffff;
+  --el-border-color: #dfe6e9;
+  --el-border-color-light: #dfe6e9;
+  --el-border-color-lighter: #f2f5f6;
+  --el-text-color-primary: #172d36;
+  --el-text-color-regular: #405660;
+  --el-text-color-secondary: #617680;
+  --el-text-color-placeholder: #8b9da5;
+  --el-fill-color: #f2f5f6;
+  --el-fill-color-light: #ffffff;
+  --el-fill-color-blank: #ffffff;
+}
+
+/* ==========================================================================
+   Global Reset & Inter Typography (Linear / upi.xxsyun.xyz Standard)
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  background: var(--app-content-bg);
+  color: var(--app-title);
+}
+
+body {
+  overflow-x: hidden;
+}
+
+/* Tabular Numbers for Metrics, Timestamps, Table Figures */
+.metric-value,
+.stat-val,
+.legend-num,
+.mono,
+.num,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Custom Minimalist Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--app-border);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--app-text-muted);
+}
+
+/* ==========================================================================
+   Page & Card Layout Styling
+   ========================================================================== */
+
+.page {
+  padding: 0;
+  max-width: 1540px;
+  margin: 0 auto;
+}
+
+.page .el-card {
+  margin-bottom: 20px;
+  border-radius: var(--app-card-radius);
+  border: 1px solid var(--app-border);
+  background: var(--app-card-bg);
+  box-shadow: var(--app-shadow-xs);
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.page .el-card:hover {
+  border-color: var(--app-border-hover);
+}
+
+.page .el-card__header {
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-card-bg);
+}
+
+.page .el-card__body {
+  padding: 20px;
+}
+
+.section-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--app-title);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hint {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ==========================================================================
+   Workspace metric cards
+   ========================================================================== */
+
+.metric-card {
+  border-radius: var(--app-card-radius);
+  border: 1px solid var(--app-border);
+  background: var(--app-card-bg);
+  padding: 16px 18px;
+  transition: border-color .18s ease, box-shadow .18s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  cursor: pointer;
+}
+
+.metric-card:hover {
+  border-color: var(--app-border-hover);
+  background: var(--app-card-surface);
+  box-shadow: var(--app-shadow-sm);
+}
+
+.metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.metric-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--app-text-muted);
+  letter-spacing: 0.01em;
+}
+
+.metric-icon-wrap {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: var(--app-title);
+}
+
+.metric-sub {
+  font-size: 11px;
+  color: var(--app-text-muted);
+  margin-top: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   Component Overrides: Button, Input, Table, Tag
+   ========================================================================== */
+
+/* Buttons */
+.el-button {
+  min-height: 36px;
+  padding: 0 13px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid var(--app-border);
+  background: var(--app-card-surface);
+  color: var(--app-title);
+  transition: background-color .16s, border-color .16s, color .16s;
+}
+
+.el-button:hover {
+  background: var(--app-card-hover);
+  border-color: var(--app-border-hover);
+  color: var(--app-title);
+}
+
+.el-button:active {
+  transform: scale(0.98);
+}
+
+/* Primary Button: Workspace Teal */
+.el-button--primary {
+  background: var(--brand) !important;
+  color: var(--brand-fg) !important;
+  border-color: var(--brand) !important;
+  font-weight: 600;
+}
+.el-button--primary:hover {
+  background: var(--brand-hover) !important;
+  border-color: var(--brand-hover) !important;
+  color: var(--brand-fg) !important;
+}
+
+.el-button--success {
+  background: var(--color-success-bg) !important;
+  border-color: var(--color-success-border) !important;
+  color: var(--color-success) !important;
+}
+.el-button--success:hover {
+  filter: brightness(1.1);
+  border-color: var(--color-success) !important;
+}
+
+.el-button--warning {
+  background: var(--color-warning-bg) !important;
+  border-color: var(--color-warning-border) !important;
+  color: var(--color-warning) !important;
+}
+.el-button--warning:hover {
+  filter: brightness(1.1);
+  border-color: var(--color-warning) !important;
+}
+
+.el-button--danger {
+  background: var(--color-danger-bg) !important;
+  border-color: var(--color-danger-border) !important;
+  color: var(--color-danger) !important;
+}
+.el-button--danger:hover {
+  filter: brightness(1.1);
+  border-color: var(--color-danger) !important;
+}
+
+.el-button.is-text {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--app-text-muted);
+}
+.el-button.is-text:hover {
+  background: var(--app-card-surface) !important;
+  color: var(--app-title);
+}
+
+/* Inputs & Selects */
+.el-input__wrapper,
+.el-select__wrapper {
+  background-color: var(--app-card-bg) !important;
+  box-shadow: 0 0 0 1px var(--app-border) inset !important;
+  border-radius: 8px !important;
+  min-height: 36px;
+  padding: 0 10px !important;
+  transition: background-color .16s, box-shadow .16s !important;
+}
+
+.el-input__wrapper:hover,
+.el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px var(--app-border-hover) inset !important;
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px var(--brand-glow) !important;
+}
+
+.el-input__inner {
+  color: var(--app-title) !important;
+  font-size: 13px;
+}
+
+/* Tables */
+.el-table {
+  background-color: var(--app-card-bg) !important;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.el-table th.el-table__cell {
+  background: var(--app-card-surface) !important;
+  color: var(--app-text-muted) !important;
+  font-weight: 600 !important;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--app-border) !important;
+  padding: 10px 0 !important;
+}
+
+.el-table td.el-table__cell {
+  border-bottom: 1px solid var(--app-border) !important;
+  color: var(--app-title);
+  background: var(--app-card-bg);
+  padding: 9px 0 !important;
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
+  background-color: var(--app-card-hover) !important;
+}
+
+/* Tags */
+.el-tag {
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 11px;
+  padding: 0 7px;
+  height: 22px;
+  line-height: 20px;
+  border: 1px solid transparent;
+}
+.el-tag--success {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+  color: var(--color-success);
+}
+.el-tag--warning {
+  background: var(--color-warning-bg);
+  border-color: var(--color-warning-border);
+  color: var(--color-warning);
+}
+.el-tag--danger {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger);
+}
+.el-tag--primary {
+  background: var(--brand-bg);
+  border-color: var(--brand-glow);
+  color: var(--brand);
+}
+.el-tag--info {
+  background: var(--app-card-surface);
+  border-color: var(--app-border);
+  color: var(--app-text-muted);
+}
+
+/* Dialog & Drawer */
+.el-dialog {
+  background: var(--app-card-bg) !important;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--app-shadow-md) !important;
+}
+.el-dialog__header {
+  border-bottom: 1px solid var(--app-border);
+  padding: 14px 18px !important;
+}
+.el-dialog__title {
+  color: var(--app-title) !important;
+  font-weight: 600;
+}
+.el-dialog__footer {
+  border-top: 1px solid var(--app-border);
+  padding: 12px 18px !important;
+}
+
+.el-drawer {
+  background: var(--app-sidebar-bg) !important;
+  border-right: 1px solid var(--app-border) !important;
+}
+
+/* Descriptions */
+.el-descriptions__body {
+  background: var(--app-card-bg) !important;
+}
+.el-descriptions__label.is-bordered-label {
+  background: var(--app-card-surface) !important;
+  color: var(--app-text-muted) !important;
+  border-color: var(--app-border) !important;
+  font-size: 12px;
+}
+.el-descriptions__content.is-bordered-content {
+  border-color: var(--app-border) !important;
+  color: var(--app-title) !important;
+  font-size: 12px;
+}
+
+/* Log Console */
+.log-box {
+  background: var(--app-log-bg);
+  color: var(--app-log-text);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.log-box .line {
+  word-break: break-all;
+  white-space: pre-wrap;
+  padding: 1px 0;
+}
+.log-box .line.err, .log-box .line.error { color: var(--color-danger); font-weight: 500; }
+.log-box .line.warn { color: var(--color-warning); }
+.log-box .line.info { color: var(--color-info); }
+.log-box .line.ok, .log-box .line.success { color: var(--color-success); font-weight: 500; }
+
+/* Pagination Overrides */
+.el-pagination {
+  gap: 4px;
+}
+.el-pagination button,
+.el-pager li {
+  background: var(--app-card-surface) !important;
+  border: 1px solid var(--app-border) !important;
+  border-radius: 6px !important;
+  color: var(--app-text-muted) !important;
+}
+.el-pager li.is-active {
+  background: var(--brand) !important;
+  color: var(--brand-fg) !important;
+  border-color: var(--brand) !important;
+  font-weight: 600;
+}
+
+/* Shared layout, focus and responsive controls. */
+:root, html.dark { --brand-border: rgba(100, 200, 185, .22); --el-color-success: var(--color-success); --el-color-warning: var(--color-warning); --el-color-danger: var(--color-danger); --el-color-info: var(--color-info); }
+html:not(.dark) { --brand-border: #c9e6df; --el-mask-color: rgba(15, 23, 42, .4); --el-fill-color-lighter: #f8fafc; --app-text-dim: #718096; }
+button, input, select, textarea { font-family: inherit; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+:where(button, a, summary, [tabindex]):focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+.el-button + .el-button { margin-left: 0; }
+.el-button .el-icon { margin-right: 5px; }
+.el-button--primary.is-plain { background: var(--brand-bg) !important; color: var(--brand) !important; border-color: var(--brand-border) !important; }
+.el-button.is-disabled { opacity: .45; }
+.el-form-item__label { font-size: 12px; font-weight: 550; color: var(--app-text-muted); }
+.el-textarea__inner { background: var(--app-card-bg); color: var(--app-title); box-shadow: 0 0 0 1px var(--app-border) inset; border-radius: 9px; }
+.el-radio { margin-right: 20px; height: auto; min-height: 32px; }
+.el-radio__label { white-space: normal; line-height: 1.5; }
+.el-alert { border-radius: 9px; }
+.el-dialog { max-width: calc(100vw - 28px); }
+.el-dialog__body { overflow-wrap: anywhere; }
+.el-date-editor.el-input__wrapper { height: auto; }
+.page { width: 100%; min-width: 0; }
+.page > .el-card:last-of-type { margin-bottom: 0; }
+.page-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.page-heading h1 { font-size: 28px; line-height: 1.25; font-weight: 650; letter-spacing: -.8px; margin: 6px 0 8px; }
+.page-heading p { font-size: 12px; color: var(--app-text-muted); margin: 0; }
+.page-eyebrow { font-size: 10px; letter-spacing: 1.5px; font-weight: 600; color: var(--app-text-dim); }
+.help-details { margin: 12px 0; color: var(--app-text-muted); font-size: 12px; line-height: 1.65; border: 1px solid var(--app-border); border-radius: 8px; padding: 10px 12px; }
+.help-details > summary { cursor: pointer; color: var(--app-text-muted); font-size: 12px; }
+.help-details[open] > summary { margin-bottom: 10px; color: var(--app-title); }
+.help-details .hint { margin-bottom: 0; }
+.toolbar-block { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; align-items: center; }
+.toolbar-disclosure { border: 1px solid var(--app-border); border-radius: 9px; margin: 12px 0 16px; padding: 11px 14px; }
+.toolbar-disclosure > summary { font-size: 12px; font-weight: 550; cursor: pointer; color: var(--app-text-muted); }
+.toolbar-disclosure[open] > summary { margin-bottom: 14px; color: var(--app-title); }
+@media (max-width: 900px) { .footer-toolbar { bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important; } }
+@media (max-width: 680px) {
+  .page .el-card__header { padding: 14px; }.page .el-card__body { padding: 14px; }.page .el-card { margin-bottom: 16px; }
+  .page-heading h1 { font-size: 24px; }.page-heading { gap: 12px; }
+  .el-space { max-width: 100%; }.el-space__item { max-width: 100%; min-width: 0; }
+  .el-form-item__content { min-width: 0; }.el-form-item { margin-bottom: 16px; }
+  .el-descriptions__body { overflow-x: auto; }.el-descriptions__table { min-width: 420px; }
+  .el-pagination { flex-wrap: wrap; gap: 6px; }.el-pagination__sizes { margin: 0; }.el-pagination__jump { margin-left: 0; }
+  .el-input__inner, .el-textarea__inner { font-size: 16px; }
+  .el-input-number { max-width: 100%; }.el-select { max-width: 100%; }
+  .footer-toolbar { padding: 12px !important; flex-wrap: wrap; gap: 10px; }.ft-left { width: 100%; }
+  .el-date-editor--daterange { max-width: 100%; width: 100% !important; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+@media (max-width: 680px) {
+  /* Let the table scroll as a whole: sticky actions must not cover the email. */
+  .el-table .el-table-fixed-column--right, .el-table .el-table-fixed-column--left { position: static !important; right: auto !important; left: auto !important; }
+  .el-table .el-table-fixed-column--right::before, .el-table .el-table-fixed-column--left::before { display: none !important; }
+}

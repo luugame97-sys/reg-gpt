@@ -1,0 +1,20 @@
+import http from './request'
+
+const base = '/api/upi'
+export const getUpiConfig = () => http.get(`${base}/config`)
+export const saveUpiConfig = data => http.post(`${base}/config`, data)
+export const getUpiAutomation = params => http.get(`${base}/automation`, { params })
+export const saveUpiAutomation = (data, provider = 'ytc') => http.post(`${base}/automation`, data, { params: { provider } })
+export const getUpiSummary = (provider = 'ytc') => http.get(`${base}/summary`, { params: { provider } })
+export const getUpiAccounts = params => http.get(`${base}/accounts`, { params })
+export const prepareUpi = data => http.post(`${base}/prepare`, data)
+export const submitUpi = (request_id, provider = 'ytc') => http.post(`${base}/submit`, { request_id, confirmed: true }, { params: { provider } })
+export const getUpiRequests = (provider = 'ytc') => http.get(`${base}/requests`, { params: { provider } })
+export const getUpiTasks = params => http.get(`${base}/tasks`, { params })
+export const getUpiTask = (id, provider = 'ytc') => http.get(`${base}/tasks/${encodeURIComponent(id)}`, { params: { provider } })
+export const refreshUpiTask = (id, provider = 'ytc') => http.post(`${base}/tasks/${encodeURIComponent(id)}/refresh`, null, { params: { provider } })
+export const controlUpiTask = (id, action, provider = 'ytc') => http.post(`${base}/tasks/${encodeURIComponent(id)}/control`, { action, confirmed: true }, { params: { provider } })
+export const controlUpiTasks = (task_ids, action) => http.post(`${base}/tasks/control`, { task_ids, action, confirmed: true }, { params: { provider: 'local' } })
+export const reconcileUpiScan = (id, provider = 'ytc') => http.post(`${base}/tasks/${encodeURIComponent(id)}/retry-scan`, { confirmed: true }, { params: { provider } })
+export const previewUpiNewLink = id => http.get(`${base}/tasks/${encodeURIComponent(id)}/new-link`, { params: { provider: 'local' } })
+export const createUpiNewLink = (id, data) => http.post(`${base}/tasks/${encodeURIComponent(id)}/new-link`, data, { params: { provider: 'local' } })
