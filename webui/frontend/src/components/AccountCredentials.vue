@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onDeactivated, ref, watch } from 'vue'
+import { computed, inject, onDeactivated, ref, watch } from 'vue'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { copyText } from '@/api/request'
 import { createTotpGenerator, TOTP_PERIOD_MS } from '@/totp'
@@ -9,18 +9,20 @@ const privacy = usePrivacyStore()
 const props = defineProps({
   password: { type: String, default: '' },
   secret: { type: String, default: '' },
-  now: { type: Number, required: true },
+  now: { type: Number, default: undefined },
 })
+const clock = inject('accountCredentialNow', null) ?? inject('upiCredentialNow', ref(Date.now()))
+const now = computed(() => props.now ?? clock.value)
 const otp = ref('')
 const otpError = ref('')
 const passwordVisible = ref(false)
 watch(() => props.password, () => { passwordVisible.value = false })
 watch(() => privacy.hidden, () => { passwordVisible.value = false })
 onDeactivated(() => { passwordVisible.value = false })
-const remaining = computed(() => Math.ceil((TOTP_PERIOD_MS - props.now % TOTP_PERIOD_MS) / 1000))
+const remaining = computed(() => Math.ceil((TOTP_PERIOD_MS - now.value % TOTP_PERIOD_MS) / 1000))
 let generatorSecret, generatorPromise
 
-watch([() => props.secret, () => Math.floor(props.now / TOTP_PERIOD_MS)], async ([secret, counter], _, onCleanup) => {
+watch([() => props.secret, () => Math.floor(now.value / TOTP_PERIOD_MS)], async ([secret, counter], _, onCleanup) => {
   let cancelled = false
   onCleanup(() => { cancelled = true })
   otp.value = ''

@@ -30,6 +30,23 @@ def test_multiple_values_in_each_filter_combine_across_pages_and_selection():
     assert {row['email'] for row in first['items']+rest['items']}==set(selection['emails'])==expected
 
 
+def test_registered_can_skip_global_summaries_without_changing_page_or_filter(monkeypatch):
+    seed('one@example.test', group='wanted')
+    seed('two@example.test', group='other')
+    calls = []
+    groups, countries = db.list_registered_groups, db.list_registered_countries
+    monkeypatch.setattr(db, 'list_registered_groups', lambda: calls.append('groups') or groups())
+    monkeypatch.setattr(db, 'list_registered_countries', lambda: calls.append('countries') or countries())
+    with TestClient(web_app.app) as client:
+        full = client.get('/api/registered', params={'group':'wanted','limit':1}).json()
+        assert calls == ['groups','countries']
+        calls.clear()
+        lean = client.get('/api/registered', params={'group':'wanted','limit':1,'include_summary':'false'}).json()
+        assert calls == []
+        assert lean['items'] == full['items'] and lean['total'] == full['total'] == 1
+        assert lean['groups_summary'] is None and lean['countries_summary'] is None
+
+
 @pytest.mark.parametrize('expression',['plan_plus,invalid','plan_plus,','all,plan_plus','plan_plus|auth_2fa,invalid',','.join(['plan_plus']+['x']*18),'a'*1025])
 def test_invalid_or_expression_never_broadens_a_scope(expression):
     seed('keep@example.test')

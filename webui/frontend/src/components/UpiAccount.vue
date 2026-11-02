@@ -1,5 +1,4 @@
 <script setup>
-import { inject } from 'vue'
 import { Copy, Folder, FolderInput, RotateCw } from 'lucide-vue-next'
 import AccountCredentials from '@/components/AccountCredentials.vue'
 import { copyText, fmtTime } from '@/api/request'
@@ -17,7 +16,6 @@ const props = defineProps({
 })
 const emit = defineEmits(['move', 'folders-open', 'reload', 'navigate'])
 const i18n = useI18nStore()
-const credentialNow = inject('upiCredentialNow')
 const t = text => i18n.t(text)
 function copyLogin() {
   const account = props.info?.account
@@ -34,9 +32,9 @@ function move(command) { emit('move', command === 'clear' ? '' : command.slice(6
       <router-link v-if="info?.state === 'ready'" class="upi-copy-login" :to="upiAccountRoute(email, true)" :title="t('Cưỡng chế làm mới AT')" :aria-label="`${t('Cưỡng chế làm mới AT')} ${email}`" @click="emit('navigate')"><RotateCw :size="14" /></router-link>
     </div>
     <template v-if="info?.state === 'ready'">
-      <AccountCredentials :password="info.account.password" :secret="info.account.totp_secret" :now="credentialNow" />
+      <AccountCredentials :password="info.account.password" :secret="info.account.totp_secret" />
       <div class="upi-account-meta account-meta-badges">
-        <el-dropdown trigger="click" :disabled="moving" @visible-change="visible => { if (visible) emit('folders-open') }" @command="move">
+        <el-dropdown :persistent="false" trigger="click" :disabled="moving" @visible-change="visible => { if (visible) emit('folders-open') }" @command="move">
           <button type="button" class="upi-folder account-meta-badge" :disabled="moving" :aria-label="`${t('Chuyển thư mục')} ${email}`" :title="`${t('Chuyển thư mục')}: ${info.account.group_name || t('Chưa phân thư mục')}`"><FolderInput v-if="moving" :size="13" /><Folder v-else :size="13" /><span v-if="info.account.group_name" class="account-meta-label" translate="no">{{ info.account.group_name }}</span><span v-else class="account-meta-label">Chưa phân thư mục</span></button>
           <template #dropdown><el-dropdown-menu>
             <el-dropdown-item v-if="groupsLoading" disabled>Đang tải thư mục…</el-dropdown-item>

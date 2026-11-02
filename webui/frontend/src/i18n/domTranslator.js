@@ -325,7 +325,7 @@ function protectedData(node) {
   return element?.closest?.('[translate="no"], [data-no-translate], code, pre, script, style')
 }
 
-function translateNode(node, lang) {
+function translateNode(node, lang, deep = true) {
   if (!node || protectedData(node)) return
   if (node.nodeType === Node.TEXT_NODE) {
     const val = node.nodeValue
@@ -378,7 +378,7 @@ function translateNode(node, lang) {
     }
 
     // Child nodes
-    for (const child of node.childNodes) {
+    if (deep) for (const child of node.childNodes) {
       translateNode(child, lang)
     }
   }
@@ -449,13 +449,25 @@ export function initDomTranslator(i18nStore, ElMessage, ElMessageBox) {
     if (isTranslating) return
     isTranslating = true
     try {
+      // A render can report both a new subtree and its descendants.
+      // Visit each tree once; title changes do not require walking its children.
+      const added = new Set(mutations.filter(m => m.type === 'childList').flatMap(m => [...m.addedNodes]))
+      const covered = node => {
+        for (let parent = node.parentNode; parent; parent = parent.parentNode) {
+          if (added.has(parent)) return true
+        }
+        return false
+      }
+      for (const node of added) {
+        if (node.isConnected && !covered(node)) translateNode(node, i18nStore.locale)
+      }
+      const updated = new Set()
       for (const m of mutations) {
-        if (m.type === 'childList') {
-          for (const node of m.addedNodes) {
-            translateNode(node, i18nStore.locale)
-          }
-        } else if (m.type === 'characterData' || m.type === 'attributes') {
-          translateNode(m.target, i18nStore.locale)
+        if (m.type === 'characterData' || m.type === 'attributes') {
+          const node = m.target
+          if (!node.isConnected || added.has(node) || covered(node) || updated.has(node)) continue
+          updated.add(node)
+          translateNode(node, i18nStore.locale, false)
         }
       }
     } finally {

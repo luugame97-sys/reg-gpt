@@ -4,7 +4,7 @@
 
 Cài Git, Python và Node.js (kèm npm). Môi trường dùng để kiểm chứng bản xuất ngày 02/11/2026 là Python 3.14.4 và Node.js 24.21.0 trên Windows. Các dependency được khai báo trong `requirements.txt` và `webui/frontend/package-lock.json`.
 
-GitHub lưu các thay đổi đã commit và push. File còn đang sửa trên máy cũ chưa tự xuất hiện trên máy mới.
+GitHub lưu các thay đổi đã commit và push. [AGENTS.md](../AGENTS.md) yêu cầu agent tự kiểm tra/commit/push sau công việc và deploy runtime khi đủ điều kiện; file còn chưa push trên máy cũ chưa xuất hiện trên máy mới. Đây không phải tiến trình chạy nền khi tắt máy.
 
 ## 2. Lấy mã nguồn
 
@@ -13,7 +13,9 @@ git clone https://github.com/luugame97-sys/reg-gpt.git
 cd reg-gpt
 ```
 
-Mở thư mục này bằng trình soạn thảo hoặc công cụ hỗ trợ lập trình. Đọc `docs/DEVELOPMENT.md` trước khi tiếp tục.
+Mở thư mục này làm project trong Codex/trình soạn thảo. Đọc `AGENTS.md`, `docs/session_report.md` rồi `docs/DEVELOPMENT.md` trước khi tiếp tục. Chỉ cần nói: “Tiếp tục dự án theo AGENTS.md và báo cáo bàn giao, kiểm tra hiện trạng trước khi sửa.” Không cần lịch sử chat cũ để biết trạng thái đã ghi nhận.
+
+Codex đọc chỉ dẫn dự án từ `AGENTS.md`; file ở root được dùng cho project, nhưng cấu hình/override khác trên máy có thể thay đổi chỉ dẫn hiệu lực. Sau khi clone, mở phiên mới và kiểm tra agent đã nhận file này. Tham khảo [hướng dẫn AGENTS.md của OpenAI](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
 
 ## 3. Cài và chạy trên Windows
 
@@ -64,10 +66,12 @@ git status
 git add <cac-file-ma-nguon-da-kiem-tra>
 git diff --cached
 git commit -m "Mo ta thay doi"
-git push
+git push origin HEAD:main
 ```
 
-Thay `<cac-file-ma-nguon-da-kiem-tra>` bằng đường dẫn thật. Chỉ chuyển sang máy khác sau khi push thành công. Nếu hai máy cùng sửa, cần xử lý xung đột trước khi đồng bộ tiếp; không dùng force push để bỏ qua thay đổi.
+Thay `<cac-file-ma-nguon-da-kiem-tra>` bằng đường dẫn thật; trước push kiểm tra nhánh hiện tại thuộc lịch sử sạch và remote main vẫn là tổ tiên của HEAD. Lệnh push trên chỉ dành cho thay đổi đã được kiểm tra để đưa lên main, không dùng với nhánh còn dở. Chỉ chuyển sang máy khác sau khi push thành công và SHA remote khớp local. Nếu hai máy cùng sửa, cần xử lý xung đột trước khi đồng bộ tiếp; không dùng force push để bỏ qua thay đổi.
+
+Agent thực hiện các bước này theo `AGENTS.md`, không cần nhắc lại mỗi lần. Hướng dẫn lệnh ở đây cũng dùng được khi làm thủ công. Cập nhật `docs/session_report.md` trước bàn giao; nếu còn dở, ghi rõ file, kiểm thử, điểm chặn và bước tiếp theo. Không đẩy bí mật/workbench private để thay cho bản bàn giao.
 
 Khi mã frontend hoặc dependency thay đổi, chạy lại bước cài/build tương ứng. Có thể phát triển giao diện bằng `npm --prefix webui/frontend run dev` cùng backend ở cổng 8765.
 
@@ -76,7 +80,7 @@ Khi mã frontend hoặc dependency thay đổi, chạy lại bước cài/build 
 - Clone mới khởi tạo database rỗng ở `webui/webui.db`. Nhập tài khoản, proxy và khóa dịch vụ qua giao diện khi cần.
 - Database chứa mật khẩu, token, 2FA và cấu hình nhạy cảm. Để giữ dữ liệu cũ, chuyển bản backup SQLite nhất quán qua kênh riêng. Dừng ứng dụng và tác vụ liên quan trước khi thay database; nếu sao lưu khi đang chạy, dùng SQLite backup API, không chép riêng file `.db` trong lúc còn WAL.
 - Không commit database, file xuất tài khoản, khóa API, credential SSH, `.env`, log hoặc backup lên GitHub, kể cả repo private. Kiểm tra `git diff --cached` trước mỗi lần push.
-- Push GitHub không cập nhật hoặc khôi phục VPS. Dịch vụ, domain, TLS, Basic Auth, firewall và dữ liệu production được quản lý riêng. Chỉ triển khai khi đã xác định đúng máy đích, có ủy quyền và phương án khôi phục.
+- Push GitHub không tự kích hoạt CI cập nhật/khôi phục VPS. Agent được ủy quyền deploy runtime theo `AGENTS.md` và [DEPLOYMENT.md](DEPLOYMENT.md) khi có quyền SSH, đúng đích, gate an toàn và rollback. Máy mới cần thiết lập quyền GitHub/SSH qua kênh riêng một lần; docs-only hoặc runtime đã deploy thì không restart lại. Dịch vụ, TLS, Basic Auth, firewall và dữ liệu production vẫn được quản lý riêng.
 - Backend mặc định chỉ nghe `127.0.0.1`. Khi triển khai qua mạng, cần thiết lập lớp xác thực và bảo vệ mạng phù hợp; bản source không chứa cấu hình bảo vệ của VPS hiện tại.
 
 ## 7. Kiểm tra khi tiếp tục phát triển

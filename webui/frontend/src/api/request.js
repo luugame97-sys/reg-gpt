@@ -1,5 +1,7 @@
 import axios from 'axios'
 import { localeTag } from '@/i18n/locale'
+import { getActivePinia } from 'pinia'
+import { useI18nStore } from '@/stores/i18n'
 import { ElMessage } from 'element-plus'
 
 // ────────────────────────────────────────────────────────────
@@ -96,14 +98,28 @@ export async function copyText(text) {
   }
 }
 
+// Reuse Intl instances across rows and clock ticks; locale is part of the key.
+const dateFormatters = new Map()
+function dateFormatter(dateOnly) {
+  const locale = localeTag(getActivePinia() ? useI18nStore().locale : undefined), key = `${locale}:${dateOnly}`
+  if (!dateFormatters.has(key)) {
+    dateFormatters.set(key, new Intl.DateTimeFormat(locale, dateOnly
+      ? { year: 'numeric', month: 'numeric', day: 'numeric' }
+      : { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false }))
+  }
+  return dateFormatters.get(key)
+}
+
 /** 时间戳(秒) -> 本地时间字符串 */
 export function fmtTime(ts) {
   if (!ts) return '-'
-  return new Date(ts * 1000).toLocaleString(localeTag(), { hour12: false })
+  const date = new Date(ts * 1000)
+  return Number.isFinite(date.getTime()) ? dateFormatter(false).format(date) : 'Invalid Date'
 }
 
 /** Format a calendar date independently of locale-specific date/time order. */
 export function fmtDate(ts) {
   if (!ts) return '-'
-  return new Date(ts * 1000).toLocaleDateString(localeTag())
+  const date = new Date(ts * 1000)
+  return Number.isFinite(date.getTime()) ? dateFormatter(true).format(date) : 'Invalid Date'
 }

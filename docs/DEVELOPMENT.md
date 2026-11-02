@@ -1,5 +1,7 @@
 # Bàn giao mã nguồn — 02/11/2026
 
+Đọc [AGENTS.md](../AGENTS.md) để áp dụng quy tắc tự đồng bộ, [trạng thái mới nhất](session_report.md) để tiếp tục công việc và [quy trình VPS](DEPLOYMENT.md) trước khi triển khai.
+
 ## Phạm vi bản xuất
 
 Bản này lấy mã nguồn hiện có từ workspace đang phát triển, gồm backend Python/FastAPI, frontend Vue, test và giấy phép. Các cập nhật trước đó chưa commit cũng được đưa vào bản xuất. Không chứa database, tài khoản thật, cấu hình production, log, backup, bản build hoặc workbench riêng.
@@ -25,11 +27,13 @@ Lịch sử Git local trước lần xuất này từng chứa khóa API đã đ
 - UPI có xuất LS, chọn nhiều trang, tạm dừng/tiếp tục và âm thanh theo cài đặt. API hiện chỉ cho provider YTC; chế độ local/Camellia cũ còn mã nguồn nhưng không được bật qua API.
 - Khi YTC báo quét thành công, công cụ chuyển tài khoản sang thư mục `PLUS`. Đây là thao tác phân loại thư mục; không đồng nghĩa đã kiểm chứng độc lập gói thuê bao.
 - Không tự làm mới AT/plan/quota sau quét. Cưỡng chế refresh cần giữ bước xác nhận và đúng phạm vi lựa chọn. Không thay đổi các chính sách này chỉ để xử lý lỗi giao diện.
-- Snapshot triển khai gần nhất trong báo cáo local là `ui-layout-20261102-042906`. Đây là thông tin bàn giao; phải kiểm tra lại source và trạng thái VPS trước lần triển khai tiếp theo.
-- Bản xuất có cả cập nhật đồng đều nhãn thư mục/quốc gia/gói mới chỉ được kiểm tra local. Push GitHub không triển khai các thay đổi đó lên VPS.
+- Snapshot triển khai gần nhất là `ui-smooth-20261102-055026` (fix lag), đã gồm bản đồng đều nhãn `account-badges-20261102-050951`. Phải kiểm tra lại source và trạng thái VPS trước lần triển khai tiếp theo.
+- Đã giảm render trùng PC/mobile, tách clock/cache formatter, lazy overlay, giảm duyệt DOM dịch và tránh tải lại summary không cần thiết. Chi tiết và số đo có giới hạn trong `docs/session_report.md`.
 - Chưa có bằng chứng E2E thực tế cho toàn bộ đăng ký, thanh toán hoặc provider UPI. Các snapshot tác vụ local/Camellia trước đây không chứng minh luồng đang được hỗ trợ hiện tại thành công.
 
-## Kiểm chứng bản xuất
+## Kiểm chứng
+
+- Bản fix lag mới nhất: **162 test Node + 59 test Python liên quan/build/whitespace đạt**; đã kiểm tra UI fixture và live PC/mobile. Không chạy lại toàn bộ Python trong fix lag; các kết quả full suite bên dưới thuộc lần xuất source trước đó.
 
 - Build frontend đạt; 157 test Node đạt. Đã dùng dependency Node có sẵn và đối chiếu package/lockfile, chưa cài lại toàn bộ dependency trong môi trường mới hoàn toàn.
 - Trên checkout chỉ có source: 1.065 test Python đạt, 63 thất bại, 6 skip. Sáu test skip cần helper triển khai riêng không nằm trong GitHub; khi chạy tại workspace có helper, cả sáu test đạt.
@@ -38,10 +42,10 @@ Lịch sử Git local trước lần xuất này từng chứa khóa API đã đ
 
 ## Cách tiếp tục
 
-1. Đọc `docs/SETUP_VI.md`, kiểm tra Git và các file liên quan trước khi sửa.
+1. Đọc `AGENTS.md`, `docs/session_report.md`, `docs/SETUP_VI.md`; kiểm tra Git và các file liên quan trước khi sửa.
 2. Giữ các thay đổi đang làm của người khác, không đổi kiến trúc/dependency ngoài yêu cầu.
 3. Chạy kiểm tra phù hợp; phân biệt test fixture, build và luồng provider thật.
-4. Commit/push mã nguồn đã kiểm tra để máy khác có thể pull. Database và triển khai VPS có quy trình riêng.
+4. Tự commit/push mã nguồn đã kiểm tra và bản bàn giao public để máy khác có thể pull. Runtime triển khai theo `docs/DEPLOYMENT.md` khi có quyền/gate/rollback; docs-only không restart. Không tự đồng bộ database qua Git.
 5. Nếu có workbench local, file hỗ trợ nằm trong `_ai_workbench/{tools,temp,logs,backups,reports}/`; chỉ tạo khi cần và không đưa thông tin riêng lên GitHub.
 
 Giữ giấy phép AGPL-3.0 ở `LICENSE`, giấy phép thành phần trong `webui/licenses/` và credit thiết kế có sẵn trong source.

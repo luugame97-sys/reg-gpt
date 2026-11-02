@@ -89,7 +89,7 @@ test('account metadata shares equal columns and border-box sizing across account
 test('long metadata labels retain full details without changing plan verification semantics', () => {
   const registered = read('views/Registered.vue')
   assert.match(registered, /:title="row.group_name"/)
-  assert.match(registered, /<el-tooltip :content="row.group_name \|\| 'Chưa phân thư mục'" trigger="click">/)
+  assert.match(registered, /<el-tooltip\b[^>]*:content="row.group_name \|\| 'Chưa phân thư mục'" trigger="click">/)
   assert.equal([...registered.matchAll(/:title="plusOf\(row\)\?\.label \|\| 'Chưa kiểm tra'"/g)].length, 2)
   assert.equal([...registered.matchAll(/:class="row.plus_check\?\.membership_verified \? row.plus_check.status : 'unverified'"/g)].length, 2)
   assert.match(read('components/UpiAccount.vue'), /:title="`\$\{t\('Gói gần nhất'\)\}: \$\{t\(info.account.plan_label\)\}`"/)

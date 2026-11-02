@@ -1,8 +1,12 @@
 <script setup>
-import { computed, onActivated, onDeactivated, onUnmounted, ref, watch } from 'vue'
+import { computed, onActivated, onDeactivated, onUnmounted, provide, ref, watch } from 'vue'
+import { useMobileView } from '@/useMobileView'
 
 const active = ref(false)
+const mobileView = useMobileView()
 const credentialNow = ref(Date.now())
+// Only the small time-dependent children subscribe; the list never reads this clock.
+provide('accountCredentialNow', credentialNow)
 let credentialTimer = null
 function stopCredentialClock() {
   clearTimeout(credentialTimer)
@@ -235,8 +239,31 @@ function clearAccountSelection() {
   accountTable.value?.clearSelection()
   selected.value = []
 }
-function toggleAccountSelection(row,checked) { accountTable.value?.toggleRowSelection(row,checked) }
+function toggleAccountSelection(row, checked) {
+  const selection = new Map(selected.value.map(item => [item.email, item]))
+  if (checked) selection.set(row.email, row)
+  else selection.delete(row.email)
+  selected.value = [...selection.values()]
+}
+function togglePageSelection(selection) {
+  const checked = new Set(selection.map(row => row.email))
+  const next = new Map(selected.value.map(row => [row.email, row]))
+  for (const row of rows.value) {
+    if (checked.has(row.email)) next.set(row.email, row)
+    else next.delete(row.email)
+  }
+  selected.value = [...next.values()]
+}
 const selectedEmails = computed(()=>new Set(selected.value.map(row=>row.email)))
+watch([accountTable, rows, selected], () => {
+  const table = accountTable.value
+  if (!table) return
+  const checked = new Set(table.getSelectionRows().map(row => row.email))
+  for (const row of rows.value) {
+    const wanted = selectedEmails.value.has(row.email)
+    if (checked.has(row.email) !== wanted) table.toggleRowSelection(row, wanted)
+  }
+}, { flush: 'post' })
 function handleRowAction(command, row) {
   if (command === 'refresh') doSingleRefresh(row)
   if (command === 'check') doSingleCheckLive(row)
@@ -565,34 +592,44 @@ function onCountryFilterChange(v) {
 
 let loadSequence = 0
 let loadedScopeKey = ''
-async function load(resetPage) {
+let summaryLoadedAt = 0
+let listRequest = null
+onDeactivated(() => { ++loadSequence; listRequest?.abort() })
+onUnmounted(() => { ++loadSequence; listRequest?.abort(); clearTimeout(searchTimer) })
+async function load(resetPage, refreshSummary = true) {
   const scope = accountFilterParams()
   const scopeKey = JSON.stringify(scope)
   const resetScope = resetPage || scopeKey !== loadedScopeKey
   loadedScopeKey = scopeKey
   const sequence = ++loadSequence
+  listRequest?.abort()
+  if (refreshSummary) summaryLoadedAt = 0
   if (resetScope) clearAccountSelection()
   if (resetScope && page.value !== 1) { page.value = 1; return }
   loading.value = true
+  const request = new AbortController()
+  listRequest = request
+  const includeSummary = !summaryLoadedAt || Date.now() - summaryLoadedAt >= 30000
   try {
-    const params = { ...scope, limit: pageSize.value, offset: (page.value - 1) * pageSize.value }
-    const { items, total: t, groups_summary, countries_summary } = await listRegistered(params)
+    const params = { ...scope, limit: pageSize.value, offset: (page.value - 1) * pageSize.value, include_summary: includeSummary }
+    const { items, total: t, groups_summary, countries_summary } = await listRegistered(params, { signal: request.signal })
     if (sequence !== loadSequence) return
     rows.value = items
     total.value = t
     if (groups_summary) {
       applyGroupsSummary(groups_summary)
-    } else {
+    } else if (includeSummary) {
       loadGroupsOnly()
     }
     if (countries_summary) {
       applyCountriesSummary(countries_summary)
-    } else {
+    } else if (includeSummary) {
       loadCountriesOnly()
     }
+    if (groups_summary && countries_summary) summaryLoadedAt = Date.now()
     loadMeta(false, items.map((r) => r.email))   // 只拉当前页
-    loadZeroSummary()   // 0 元可领汇总（支付能力探测的结论）
-  } catch (e) { if (sequence === loadSequence) ElMessage.error(e.message) }
+    if (toolsOpen.value) loadZeroSummary()
+  } catch (e) { if (sequence === loadSequence && !request.signal.aborted) ElMessage.error(e.message) }
   finally { if (sequence === loadSequence) loading.value = false }
 }
 
@@ -1157,7 +1194,7 @@ const groupNamesList = computed(() =>
 function selectGroup(g) {
   groupFilter.value = g || 'all'
   foldersVisible.value=false
-  load(true)
+  load(true, false)
 }
 
 async function promptCreateGroup(assignEmailsAfter = []) {
@@ -1508,13 +1545,13 @@ watch(refreshScope, () => { if (!refreshSpecificScope.value) refreshUsable.value
 watch(() => refreshDialogVisible.value && refreshFilterActive.value ? JSON.stringify({ ...refreshCandidateParams(), scope: refreshScope.value }) : '', loadRefreshCandidatePreview)
 watch(keyword, () => {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => load(true), 350)
+  searchTimer = setTimeout(() => load(true, false), 350)
 })
 
-watch(page, () => load())
+watch(page, () => load(false, false))
 watch(pageSize, (v) => {
   localStorage.setItem('reg.pageSize', String(v))
-  load(true)
+  load(true, false)
 })
 // 自动跑号期间 run_started/run_finished 事件很密（20 并发），每次都重拉整页
 // 会让页面发卡 —— 这里节流到最多 5 秒一次。
@@ -1627,13 +1664,14 @@ onActivated(() => {
       </AccountToolbar>
       <el-skeleton v-if="loading && !rows.length" :rows="6" animated style="padding: 8px 0" />
       <el-table
-        v-else
+        v-else-if="!mobileView"
         class="account-desktop-table"
         :max-height="640"
         ref="accountTable"
         v-loading="loading" :data="rows" size="default"
         row-key="email"
-        @selection-change="(v) => (selected = v)"
+        @select="(selection, row) => toggleAccountSelection(row, selection.some(item => item.email === row.email))"
+        @select-all="togglePageSelection"
       >
         <el-table-column type="selection" width="44" :reserve-selection="true" />
         <el-table-column prop="email" label="Tài khoản / Thư mục" min-width="308">
@@ -1642,9 +1680,9 @@ onActivated(() => {
           </template>
           <template #default="{ row }">
             <div class="account-identity"><button type="button" class="mono account-email account-email-copy" :aria-label="`Sao chép email ${row.email}`" title="Bấm để sao chép email" @click.stop="copyText(row.email)"><span translate="no">{{ row.email }}</span></button>
-            <AccountCredentials :password="row.password || ''" :secret="row.totp_secret || ''" :now="credentialNow" />
+            <AccountCredentials :password="row.password || ''" :secret="row.totp_secret || ''" />
             <div class="account-identity-meta account-meta-badges">
-            <el-dropdown trigger="click" @command="(cmd) => handleRowGroupCommand(row, cmd)">
+            <el-dropdown :persistent="false" trigger="click" @command="(cmd) => handleRowGroupCommand(row, cmd)">
               <el-tag
                 v-if="row.group_name"
                 size="small"
@@ -1678,7 +1716,7 @@ onActivated(() => {
                 </el-dropdown-menu>
               </template>
             </el-dropdown><span class="account-country account-meta-badge" :title="rowCountry(row) || 'Chưa có'">{{ rowCountry(row) || '—' }}</span>
-            <el-popover trigger="click" placement="top-start" :width="280" popper-class="account-plan-popover">
+            <el-popover :persistent="false" trigger="click" placement="top-start" :width="280" popper-class="account-plan-popover">
               <template #reference><button type="button" class="account-plan-badge account-meta-badge" :class="row.plus_check?.membership_verified ? row.plus_check.status : 'unverified'" :title="plusOf(row)?.label || 'Chưa kiểm tra'" :aria-label="`Gói tài khoản: ${plusOf(row)?.label || 'Chưa kiểm tra'}`">
                 <StatusDot v-if="plusOf(row)" :type="row.plus_check.membership_verified ? PLUS_TYPE[plusOf(row).status] || 'info' : row.plus_check.trial_eligible ? 'success' : 'info'" :text="plusOf(row).label" />
                 <span v-else>Chưa kiểm tra</span>
@@ -1733,7 +1771,7 @@ onActivated(() => {
           </template>
         </el-table-column>
 
-        <el-table-column label="Quota Codex / Work" min-width="190"><template #default="{ row }"><AccountQuota :check="row.quota_check" :plan="row.plus_check" :now="credentialNow" :disabled="refreshJobRunning" @check="openSingleTask(row, 'quota_check')" /></template></el-table-column>
+        <el-table-column label="Quota Codex / Work" min-width="190"><template #default="{ row }"><AccountQuota :check="row.quota_check" :plan="row.plus_check" :disabled="refreshJobRunning" @check="openSingleTask(row, 'quota_check')" /></template></el-table-column>
         <!-- UPI 支付金额：int31.space 支付能力探测的真实结论（印度出口实测） -->
         <el-table-column v-if="detailedColumns" label="Số tiền UPI" width="116" align="center">
           <template #default="{ row }">
@@ -1776,7 +1814,7 @@ onActivated(() => {
               </el-tag></button>
             </el-tooltip>
             <small v-if="tokenStatus(row).detail" class="token-expiry-detail">{{ tokenStatus(row).detail }}</small>
-            <el-tooltip v-if="row.refresh_error" :content="`${row.refresh_error.message || row.refresh_error.label} · ${fmtTime(row.refresh_error.checked_at)}${row.refresh_error.manual_retry_required ? ' · Tạm dừng. Kiểm tra/bổ sung đường nhận mail, sau đó chọn Đã xử lý mail · cho phép thử lại.' : row.refresh_error.terminal_auth_error ? ' · Không tự thử lại; sửa thông tin hoặc chọn Cho phép thử lại.' : ''} · Nhấp để lọc`" placement="top">
+            <el-tooltip :persistent="false" v-if="row.refresh_error" :content="`${row.refresh_error.message || row.refresh_error.label} · ${fmtTime(row.refresh_error.checked_at)}${row.refresh_error.manual_retry_required ? ' · Tạm dừng. Kiểm tra/bổ sung đường nhận mail, sau đó chọn Đã xử lý mail · cho phép thử lại.' : row.refresh_error.terminal_auth_error ? ' · Không tự thử lại; sửa thông tin hoặc chọn Cho phép thử lại.' : ''} · Nhấp để lọc`" placement="top">
               <el-tag size="small" :type="row.refresh_error.terminal_auth_error ? 'danger' : 'warning'" effect="light" class="refresh-error-tag" @click.stop="filterRefreshError(row.refresh_error)">{{ row.refresh_error.label || 'Lỗi làm mới' }}</el-tag>
             </el-tooltip>
             </div>
@@ -1800,7 +1838,7 @@ onActivated(() => {
         </el-table-column>
         <el-table-column label="Lưu lượng" min-width="105">
           <template #default="{ row }">
-            <el-popover placement="left" :width="350" trigger="hover" :disabled="!accountTaskTraffic(row).length">
+            <el-popover :persistent="false" placement="left" :width="350" trigger="hover" :disabled="!accountTaskTraffic(row).length">
               <template #reference><div class="account-traffic-cell"><strong v-if="accountTrafficTotal(row)">{{ fmtBytes(Number(accountTrafficTotal(row).rx || 0) + Number(accountTrafficTotal(row).tx || 0)) }}</strong><span v-else>Chưa đo</span><small v-if="accountTrafficTotal(row)">Tổng đã dùng</small></div></template>
               <strong class="traffic-popover-title">Lưu lượng cộng dồn</strong><TaskTraffic v-if="accountTrafficTotal(row)" :traffic="accountTrafficTotal(row)" label="Tổng đã dùng" /><div v-for="item in accountTaskTraffic(row)" :key="item.label" class="account-task-traffic"><TaskTraffic :traffic="item.traffic" :label="item.label" /></div><p class="hint">Cộng dồn các lượt đã đo, gồm lỗi và thử lại. Ước tính nội dung HTTP, chưa gồm header/TLS.<template v-if="accountTrafficTotal(row)?.history_limited"> Các lượt cũ không còn số đo có thể bị thiếu.</template></p>
             </el-popover>
@@ -1818,7 +1856,7 @@ onActivated(() => {
           <template #default="{ row }">
             <div class="account-row-actions">
               <el-button size="small" text @click="viewCred(row.email)">Chi tiết</el-button>
-              <el-dropdown trigger="click" @command="command => handleRowAction(command, row)">
+              <el-dropdown :persistent="false" trigger="click" @command="command => handleRowAction(command, row)">
                 <el-button size="small" text :loading="!!refreshingRow[row.email]" :aria-label="`Thao tác với ${row.email}`"><el-icon><ChevronDown /></el-icon></el-button>
                 <template #dropdown><el-dropdown-menu>
                   <el-dropdown-item command="copy_ls"><el-icon><CopyDocument /></el-icon>Sao chép LS</el-dropdown-item>
@@ -1839,17 +1877,17 @@ onActivated(() => {
           <el-empty :description="activeFilters.length ? 'Không có tài khoản khớp bộ lọc' : 'Chưa có tài khoản. Hãy nhập hoặc đăng ký mới.'" :image-size="70" />
         </template>
       </el-table>
-      <div class="account-mobile-list" v-loading="loading"><article v-for="row in rows" :key="row.email" class="account-mobile-card" :class="{selected:selectedEmails.has(row.email)}"><div class="mobile-account-heading"><el-checkbox :model-value="selectedEmails.has(row.email)" :aria-label="`Chọn ${row.email}`" @change="checked=>toggleAccountSelection(row,checked)"/><div><button type="button" class="account-email-copy" :aria-label="`Sao chép email ${row.email}`" title="Bấm để sao chép email" @click.stop="copyText(row.email)"><span translate="no">{{ row.email }}</span></button></div><el-dropdown trigger="click" @command="command=>handleRowAction(command,row)"><el-button text :aria-label="`Thao tác mobile với ${row.email}`">•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="copy_ls">Sao chép LS</el-dropdown-item><el-dropdown-item command="copy_at" :disabled="!row.at_len">Sao chép AT</el-dropdown-item><el-dropdown-item command="check" :disabled="refreshJobRunning">Kiểm tra AT…</el-dropdown-item><el-dropdown-item command="quota" :disabled="refreshJobRunning">Kiểm tra quota</el-dropdown-item><el-dropdown-item command="refresh" :disabled="refreshJobRunning">Làm mới AT…</el-dropdown-item><el-dropdown-item command="edit" divided>Sửa tài khoản</el-dropdown-item><el-dropdown-item command="delete" class="danger-menu-item">Xóa tài khoản…</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
+      <div v-if="mobileView" class="account-mobile-list" v-loading="loading"><article v-for="row in rows" :key="row.email" class="account-mobile-card" :class="{selected:selectedEmails.has(row.email)}"><div class="mobile-account-heading"><el-checkbox :model-value="selectedEmails.has(row.email)" :aria-label="`Chọn ${row.email}`" @change="checked=>toggleAccountSelection(row,checked)"/><div><button type="button" class="account-email-copy" :aria-label="`Sao chép email ${row.email}`" title="Bấm để sao chép email" @click.stop="copyText(row.email)"><span translate="no">{{ row.email }}</span></button></div><el-dropdown :persistent="false" trigger="click" @command="command=>handleRowAction(command,row)"><el-button text :aria-label="`Thao tác mobile với ${row.email}`">•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="copy_ls">Sao chép LS</el-dropdown-item><el-dropdown-item command="copy_at" :disabled="!row.at_len">Sao chép AT</el-dropdown-item><el-dropdown-item command="check" :disabled="refreshJobRunning">Kiểm tra AT…</el-dropdown-item><el-dropdown-item command="quota" :disabled="refreshJobRunning">Kiểm tra quota</el-dropdown-item><el-dropdown-item command="refresh" :disabled="refreshJobRunning">Làm mới AT…</el-dropdown-item><el-dropdown-item command="edit" divided>Sửa tài khoản</el-dropdown-item><el-dropdown-item command="delete" class="danger-menu-item">Xóa tài khoản…</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
             <div class="mobile-account-meta account-meta-badges">
-              <el-tooltip :content="row.group_name || 'Chưa phân thư mục'" trigger="click"><button type="button" class="account-folder-badge account-meta-badge" :title="row.group_name || 'Chưa phân thư mục'"><el-icon><Folder /></el-icon><span v-if="row.group_name" class="account-meta-label" translate="no">{{ row.group_name }}</span><span v-else class="account-meta-label">Chưa phân thư mục</span></button></el-tooltip>
+              <el-tooltip :persistent="false" :content="row.group_name || 'Chưa phân thư mục'" trigger="click"><button type="button" class="account-folder-badge account-meta-badge" :title="row.group_name || 'Chưa phân thư mục'"><el-icon><Folder /></el-icon><span v-if="row.group_name" class="account-meta-label" translate="no">{{ row.group_name }}</span><span v-else class="account-meta-label">Chưa phân thư mục</span></button></el-tooltip>
               <span class="account-country account-meta-badge" :title="rowCountry(row) || 'Chưa có'">{{ rowCountry(row) || '—' }}</span>
-              <el-popover trigger="click" placement="top-start" :width="280" popper-class="account-plan-popover">
+              <el-popover :persistent="false" trigger="click" placement="top-start" :width="280" popper-class="account-plan-popover">
               <template #reference><button type="button" class="account-plan-badge account-meta-badge" :class="row.plus_check?.membership_verified ? row.plus_check.status : 'unverified'" :title="plusOf(row)?.label || 'Chưa kiểm tra'" :aria-label="`Gói tài khoản: ${plusOf(row)?.label || 'Chưa kiểm tra'}`">
                 <StatusDot v-if="plusOf(row)" :type="row.plus_check.membership_verified ? PLUS_TYPE[plusOf(row).status] || 'info' : row.plus_check.trial_eligible ? 'success' : 'info'" :text="plusOf(row).label" />
                 <span v-else>Chưa kiểm tra</span>
               </button></template>
               <div class="account-plan-detail"><strong>{{ plusOf(row)?.label || 'Chưa kiểm tra' }}</strong><p>{{ planTooltip(row) }}</p></div>
-            </el-popover></div><AccountCredentials :password="row.password || ''" :secret="row.totp_secret || ''" :now="credentialNow" /><div class="mobile-account-status"><div><small>Access Token</small><button type="button" @click="viewTokenStatus(row)"><el-tag :type="tokenStatus(row).type">{{ tokenStatus(row).text }}</el-tag></button><span>{{ tokenStatus(row).detail }}</span></div></div><AccountQuota :check="row.quota_check" :plan="row.plus_check" :now="credentialNow" :disabled="refreshJobRunning" @check="openSingleTask(row, 'quota_check')" /><button v-if="row.refresh_error" type="button" class="mobile-account-error" @click="filterRefreshError(row.refresh_error)">{{ row.refresh_error.label || 'Có lỗi làm mới' }}</button><div v-if="detailedColumns" class="mobile-account-extra"><el-button text size="small" @click="copyLoginString(row.email)">Sao chép LS</el-button><el-button text size="small" :disabled="!row.at_len" @click="copyCell(row.email, 'access_token')">Sao chép AT</el-button><el-button text size="small" @click="copyCell(row.email, 'totp_secret')">Sao chép 2FA</el-button></div><div class="mobile-account-footer"><span>{{ row.created_at ? fmtDate(row.created_at) : 'Chưa rõ ngày' }}</span><span>{{ accountTrafficTotal(row) ? fmtBytes(Number(accountTrafficTotal(row).rx||0)+Number(accountTrafficTotal(row).tx||0)) : 'Chưa đo' }}</span><el-button text size="small" @click="viewCred(row.email)">Chi tiết</el-button></div></article><el-empty v-if="!rows.length && !loading" description="Không có tài khoản khớp bộ lọc" :image-size="60"/></div>
+            </el-popover></div><AccountCredentials :password="row.password || ''" :secret="row.totp_secret || ''" /><div class="mobile-account-status"><div><small>Access Token</small><button type="button" @click="viewTokenStatus(row)"><el-tag :type="tokenStatus(row).type">{{ tokenStatus(row).text }}</el-tag></button><span>{{ tokenStatus(row).detail }}</span></div></div><AccountQuota :check="row.quota_check" :plan="row.plus_check" :disabled="refreshJobRunning" @check="openSingleTask(row, 'quota_check')" /><button v-if="row.refresh_error" type="button" class="mobile-account-error" @click="filterRefreshError(row.refresh_error)">{{ row.refresh_error.label || 'Có lỗi làm mới' }}</button><div v-if="detailedColumns" class="mobile-account-extra"><el-button text size="small" @click="copyLoginString(row.email)">Sao chép LS</el-button><el-button text size="small" :disabled="!row.at_len" @click="copyCell(row.email, 'access_token')">Sao chép AT</el-button><el-button text size="small" @click="copyCell(row.email, 'totp_secret')">Sao chép 2FA</el-button></div><div class="mobile-account-footer"><span>{{ row.created_at ? fmtDate(row.created_at) : 'Chưa rõ ngày' }}</span><span>{{ accountTrafficTotal(row) ? fmtBytes(Number(accountTrafficTotal(row).rx||0)+Number(accountTrafficTotal(row).tx||0)) : 'Chưa đo' }}</span><el-button text size="small" @click="viewCred(row.email)">Chi tiết</el-button></div></article><el-empty v-if="!rows.length && !loading" description="Không có tài khoản khớp bộ lọc" :image-size="60"/></div>
       <div style="display: flex; justify-content: center; margin-top: 14px">
         <el-pagination
           v-model:current-page="page"

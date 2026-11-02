@@ -3,7 +3,10 @@
 Bản mã nguồn đang được phát triển tại [luugame97-sys/reg-gpt](https://github.com/luugame97-sys/reg-gpt).
 
 - [Cài đặt trên máy mới, chạy và đồng bộ Git](docs/SETUP_VI.md).
+- [Quy tắc agent: tự đồng bộ GitHub/VPS có kiểm tra](AGENTS.md).
+- [Trạng thái bản mới nhất và việc cần tiếp tục](docs/session_report.md).
 - [Ghi chú bàn giao để tiếp tục phát triển](docs/DEVELOPMENT.md).
+- [Quy trình triển khai VPS và giới hạn an toàn](docs/DEPLOYMENT.md).
 - Kho này lưu mã nguồn và kiểm thử. Database, tài khoản, proxy, khóa API, log và cấu hình VPS được giữ riêng. Cần build frontend sau khi clone.
 
 Phần tài liệu gốc bên dưới được giữ để tham khảo; mã gốc từ `jiangjin934/gpt-reg-review`, giấy phép AGPL-3.0 trong [LICENSE](LICENSE).

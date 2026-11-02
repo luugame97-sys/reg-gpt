@@ -1,15 +1,17 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { fmtTime } from '@/api/request'
 import { quotaSummary, quotaWindows, quotaPercent, quotaDuration, quotaBar, quotaResetCountdown, quotaSubscriptionExpiry } from '@/accountQuota'
 import { useI18nStore } from '@/stores/i18n'
 import { localeTag } from '@/i18n/locale'
-const props = defineProps({ check: { type: Object, default: null }, plan: { type: Object, default: null }, now: { type: Number, default: () => Date.now() }, disabled: Boolean })
+const props = defineProps({ check: { type: Object, default: null }, plan: { type: Object, default: null }, now: { type: Number, default: undefined }, disabled: Boolean })
+const clock = inject('accountCredentialNow', ref(Date.now()))
+const now = computed(() => props.now ?? clock.value)
 const emit = defineEmits(['check'])
 const i18n = useI18nStore()
-const state = computed(() => quotaSummary(props.check, props.now))
+const state = computed(() => quotaSummary(props.check, now.value))
 const windows = computed(() => quotaWindows(props.check))
-const expiry = computed(() => quotaSubscriptionExpiry(props.plan, props.now))
+const expiry = computed(() => quotaSubscriptionExpiry(props.plan, now.value))
 const expiryUnknown = computed(() => props.plan?.membership_verified === true && props.plan?.plan_type && props.plan.plan_type !== 'free' && !expiry.value)
 function duration(seconds) {
   const value = quotaDuration(seconds)
@@ -20,14 +22,15 @@ function windowLabel(window) {
   const label = window.limit_window_seconds === 604800 ? i18n.t('Tuần') : period ? `${period.value}${({ngày:'d',giờ:'h',phút:'m',giây:'s'})[period.unit]}` : i18n.t('Chưa rõ chu kỳ')
   return window.bucketKey === 'rate_limit' ? label : `${i18n.t(window.bucketLabel)} · ${label}`
 }
+const shortFormatters = computed(() => [false, true].map(withYear => new Intl.DateTimeFormat(localeTag(i18n.locale), {day:'2-digit',month:'2-digit',...(withYear ? {year:'numeric'} : {}),hour:'2-digit',minute:'2-digit',hour12:false})))
 function shortTime(value, withYear = false) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return ''
   const date = new Date(value * 1000)
   if (!Number.isFinite(date.getTime())) return ''
-  return new Intl.DateTimeFormat(localeTag(i18n.locale), {day:'2-digit',month:'2-digit',...(withYear ? {year:'numeric'} : {}),hour:'2-digit',minute:'2-digit',hour12:false}).format(date)
+  return shortFormatters.value[withYear ? 1 : 0].format(date)
 }
 function resetLabel(window) {
-  const result = quotaResetCountdown(window.reset_at, props.now)
+  const result = quotaResetCountdown(window.reset_at, now.value)
   return result.state === 'passed' ? i18n.t('Cần kiểm tra lại') : result.state === 'unknown' ? i18n.t('Chưa rõ mốc reset') : result.text
 }
 function progressLabel(window) {
@@ -37,7 +40,7 @@ function progressLabel(window) {
 
 <template>
   <div class="account-quota" :class="{ warning: state.stale || state.previous || state.limited, stale: state.stale || state.previous }">
-    <el-popover v-if="check" trigger="click" :width="330" placement="bottom-start">
+    <el-popover :persistent="false" v-if="check" trigger="click" :width="330" placement="bottom-start">
       <template #reference>
         <button type="button" class="quota-summary" aria-label="Xem chi tiết quota">
           <template v-if="state.success">

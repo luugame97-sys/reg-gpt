@@ -157,3 +157,25 @@ test('legacy dynamic messages can switch languages after message interception',(
  assert.equal(translateString(english,'zh'),'共 19 条')
  assert.equal(translateString(english,'vi'),'Tổng cộng 19 mục')
 })
+
+test('mutation translation deduplicates inserted subtrees and limits attribute work to the target', () => {
+  let notify, reads=0
+  const element = () => ({nodeType:1,tagName:'DIV',isConnected:true,childNodes:[],closest:()=>null,
+    getAttribute:()=>{reads++;return null},setAttribute:()=>{},hasAttribute:()=>false})
+  const parent=element(), child=element()
+  child.parentNode=parent;parent.childNodes=[child]
+  const text={nodeType:3,nodeValue:'Tạo thư mục',isConnected:true,parentNode:child,parentElement:child}
+  child.childNodes=[text]
+  context.window={};context.document={body:null}
+  context.MutationObserver=class {constructor(fn){notify=fn} observe(){} disconnect(){}}
+  context.module.exports.initDomTranslator({locale:'en',$subscribe:()=>{}})
+  notify([{type:'childList',addedNodes:[parent]},{type:'childList',addedNodes:[child,text]},{type:'attributes',target:child}])
+  assert.equal(text.nodeValue,'Create folder')
+  assert.equal(reads,14) // seven translatable attributes, each element visited once
+  reads=0; text.nodeValue='Tài khoản'
+  notify([{type:'attributes',target:parent},{type:'attributes',target:parent}])
+  assert.equal(reads,7)
+  assert.equal(text.nodeValue,'Tài khoản')
+  notify([{type:'characterData',target:text}])
+  assert.equal(text.nodeValue,'Accounts')
+})

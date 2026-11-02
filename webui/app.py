@@ -918,6 +918,7 @@ def api_registered(
     start_time: Optional[float] = None,
     end_time: Optional[float] = None,
     q: str = "",
+    include_summary: bool = True,
 ):
     items = db.list_registered(
         limit=limit,
@@ -937,8 +938,8 @@ def api_registered(
         country=country,
         q=q,
     )
-    groups_summary = db.list_registered_groups()
-    countries_summary = db.list_registered_countries()
+    groups_summary = db.list_registered_groups() if include_summary else None
+    countries_summary = db.list_registered_countries() if include_summary else None
     return {
         "ok": True,
         "items": items,

@@ -13,8 +13,8 @@ export const listEnvironments = (limit = 100) =>
   http.get('/api/environments', { params: { limit } })
 
 // ──────────────── 注册结果 registered ────────────────
-export const listRegistered = (params) =>
-  http.get('/api/registered', { params }) // { limit, offset, filter }
+export const listRegistered = (params, options = {}) =>
+  http.get('/api/registered', { ...options, params }) // { limit, offset, filter }
 export const getRegisteredOverview = () => http.get('/api/registered/overview')
 
 // 注册结果页的轻量元数据：国家 / 指纹版本 / 流量 / AT 过期时间。
