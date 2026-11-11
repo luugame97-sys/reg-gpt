@@ -1,5 +1,12 @@
 // UI phrases and templates. Keep placeholders identical in all three languages.
 const upiPhrases = [
+  ['Quét lại tài khoản lỗi','Retry failed accounts','重试失败账号'],
+  ['Kiểm tra lại lỗi OTP mail đã lưu','Recheck saved email OTP errors','重新检查已保存的邮箱验证码错误'],
+  ['Quét lại tài khoản lỗi của đợt đã chọn, bao gồm mọi trang kết quả.','Retry failed accounts from this batch across all result pages.','重试该批次所有结果页面中的失败账号。'],
+  ['Cho phép thử đăng nhập lại một lần trong đợt này. Nếu máy chủ thực sự yêu cầu OTP email, vẫn cần đường nhận mã hợp lệ.','Allow one new login attempt in this batch. If the server requires email verification, a working mailbox is still needed.','允许在该批次中重新登录一次。如果服务器要求邮箱验证，仍需要可用的收码邮箱。'],
+  ['Đang lấy toàn bộ tài khoản lỗi…','Loading all failed accounts…','正在加载所有失败账号…'],
+  ['Tổng lỗi {0} · Đã kiểm tra gói thành công {1} · Khóa hoặc sai thông tin {2} · Chờ OTP {3} · Không còn trong kho {4}','Failed {0} · Plan already verified {1} · Locked or invalid credentials {2} · Waiting for OTP {3} · Removed {4}','失败 {0} · 套餐已验证 {1} · 已锁定或凭据错误 {2} · 等待验证码 {3} · 已移除 {4}'],
+  ['· Kiểm tra lại OTP {0}','· Recheck OTP {0}','· 重新检查验证码 {0}'],
   ['Che khóa/OTP','Hide keys/OTP','隐藏密钥/OTP'],
   ['Hiện khóa/OTP','Show keys/OTP','显示密钥/OTP'],
   ['Che khóa/OTP trong danh sách và API UPI. Không che ô nhập, chi tiết hoặc dữ liệu xuất.','Mask list credentials and the UPI API key. Input fields, details and exports are not masked.','隐藏列表凭据和 UPI API 密钥，不隐藏输入、详情或导出内容。'],

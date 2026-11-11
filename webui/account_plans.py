@@ -139,7 +139,17 @@ def probe_account_plan(session, access_token, *, account_id="", device_id="", co
         except ValueError:
             return {**diagnostics, "status": "error", "label": "API gói trả nội dung không phải JSON"}
         except Exception as exc:
-            return {**diagnostics, "status": "error", "label": "Không đọc được gói qua proxy: " + type(exc).__name__}
+            # These are GET probes. A bounded retry on another leased proxy is
+            # safe; certificate validation and HTTP/auth rejections stay intact.
+            message = str(exc).lower()
+            match = re.search(r"curl:\s*\((\d+)\)", message)
+            code = int(match.group(1)) if match else getattr(exc, "code", None)
+            retryable = (code in {5, 6, 7, 28, 35, 52, 55, 56, 97}
+                         or type(exc).__name__ in {"ProxyError", "ConnectionError", "ConnectTimeout", "ReadTimeout", "Timeout", "TimeoutError", "SSLError"})
+            if code in {60, 77, 90} or "certificate verify failed" in message:
+                retryable = False
+            return {**diagnostics, "status": "error", "label": "Không đọc được gói qua proxy: " + type(exc).__name__,
+                    "error_code": "plan_proxy_error" if retryable else "plan_check_error", "proxy_retryable": retryable}
     try:
         result = parse_account_plans(payloads["accounts"], payloads["memberships"], preferred_account_id=account_id, now=checked_at)
     except ValueError as exc:

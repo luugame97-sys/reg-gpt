@@ -185,7 +185,7 @@ def retryable_refresh_failure(result):
     return True
 
 
-def refresh_retry_block(record):
+def refresh_retry_block(record, *, retry_email_otp=False):
     if not record:
         return "missing_record"
     previous = stored_auth_failure(record)
@@ -196,7 +196,7 @@ def refresh_retry_block(record):
         extra = {}
     if any(isinstance(extra.get(key), dict) and extra[key].get("status") == "banned" for key in ("token_check", "plus_check")):
         return "terminal_auth"
-    if stored_email_otp_hold(record):
+    if not retry_email_otp and stored_email_otp_hold(record):
         return "email_otp_hold"
     return None
 

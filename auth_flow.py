@@ -79,7 +79,10 @@ def _looks_like_email_verify_url(url: str) -> bool:
     """
     if not url:
         return False
-    return "/email-verification" in url
+    parsed = urlparse(url)
+    return (parsed.path.rstrip('/') == '/email-verification'
+            and (not parsed.netloc or parsed.hostname == 'auth.openai.com')
+            and parsed.scheme in ('', 'https'))
 
 
 def _looks_like_identity_verification_url(url: str) -> bool:
@@ -1195,6 +1198,7 @@ class AuthFlow:
             totp_code = _totp_now(totp_secret)
             logger.info(f"提交 TOTP 码进行 2FA 验证（challenge_id={challenge_id[:16]}...）")
             mfa_resp = self.submit_mfa_totp(totp_code, challenge_id)
+            page_type = self._extract_page_type(mfa_resp)
             continue_url = self._normalize_continue_url(self._extract_continue_url_from_step(mfa_resp))
 
         need_otp = (page_type == "email_otp_verification") or _looks_like_email_verify_url(continue_url or "")
@@ -4849,13 +4853,12 @@ class AuthFlow:
                     )
             except AccountCredentialError:
                 raise
-            except Exception as e:
-                logger.warning(f"login screen_hint 探测失败，回退 signup 探测: {e}")
-                continue_url = ""
-                page_type = ""
-                mode = ""
+            except Exception:
+                # A failed login request is not a new signup/OTP challenge.
+                # Preserve the actual transport/server error and its auth session.
+                raise
 
-        if not continue_url and page_type not in ("login_password", "email_otp_verification"):
+        if not prefer_login_screen_first:
             is_new = self.signup(email, sentinel)
             if is_new:
                 raise AccountCredentialError("account_not_found")
@@ -4868,7 +4871,11 @@ class AuthFlow:
             page_type = (page_type or self._existing_page_type or "").lower()
             mode = (mode or self._existing_email_verification_mode or "").lower()
 
-        if not continue_url or _looks_like_email_verify_url(continue_url):
+        need_email_otp = page_type == "email_otp_verification" or _looks_like_email_verify_url(continue_url)
+        if not continue_url and not need_email_otp:
+            raise RuntimeError("Trạng thái đăng nhập chưa có bước tiếp theo; chưa xác nhận yêu cầu OTP email.")
+
+        if need_email_otp:
             # 仍需 OTP：优先 resend 获取新码
             otp_sent_at = time.time()
             resend_ok = self.kickoff_otp_delivery("protocol_need_otp")

@@ -73,6 +73,65 @@ def test_wrong_password_does_not_fall_back_to_signup_or_request_otp(monkeypatch)
     flow.signup.assert_not_called();mail.wait_for_otp.assert_not_called()
 
 
+def test_login_transport_failure_never_switches_to_signup_or_email(monkeypatch):
+    flow = protocol_fixture(monkeypatch)
+    failure = RuntimeError('HTTP 503 temporary login failure')
+    flow.login_password_verify = Mock(side_effect=failure)
+    mail = SimpleNamespace(wait_for_otp=Mock())
+    with pytest.raises(RuntimeError) as raised:
+        flow.run_protocol_login(mail, 'fixture@example.test', password='fixture')
+    assert raised.value is failure
+    flow.signup.assert_not_called()
+    mail.wait_for_otp.assert_not_called()
+
+
+@pytest.mark.parametrize('page_type', ['', 'external_url', 'mfa_challenge', 'login_password'])
+def test_missing_next_url_is_not_evidence_of_email_otp(monkeypatch, page_type):
+    flow = protocol_fixture(monkeypatch)
+    flow.login_password_verify = Mock(return_value={'page': {'type': page_type}})
+    flow.signup = Mock(return_value=False)
+    flow.kickoff_otp_delivery = Mock(return_value=True)
+    mail = SimpleNamespace(wait_for_otp=Mock(side_effect=AssertionError('False email challenge')))
+    with pytest.raises(RuntimeError, match='Trạng thái đăng nhập'):
+        flow.run_protocol_login(mail, 'fixture@example.test', password='fixture')
+    flow.signup.assert_not_called()
+    flow.kickoff_otp_delivery.assert_not_called()
+    mail.wait_for_otp.assert_not_called()
+
+
+@pytest.mark.parametrize('url,expected', [
+    ('https://auth.openai.com/email-verification', True),
+    ('/email-verification?mode=login', True),
+    ('https://auth.openai.com/log-in?next=/email-verification', False),
+    ('https://example.test/email-verification', False),
+    ('https://auth.openai.com/email-verification-other', False),
+    ('https://auth.openai.com/mfa-challenge/fixture', False),
+])
+def test_email_challenge_url_matches_the_actual_page(url, expected):
+    assert auth_flow._looks_like_email_verify_url(url) is expected
+
+
+@pytest.mark.parametrize('stage', ['authorize', 'password', 'mfa'])
+def test_real_email_challenge_still_requires_mail_after_password_or_totp(monkeypatch, stage):
+    flow = protocol_fixture(monkeypatch)
+    challenge = {'page': {'type': 'email_otp_verification'}, 'continue_url': 'https://auth.openai.com/email-verification'}
+    if stage == 'authorize':
+        flow.authorize_continue.return_value = challenge
+    elif stage == 'password':
+        flow.login_password_verify = Mock(return_value=challenge)
+    else:
+        flow.login_password_verify = Mock(return_value={'page': {'type': 'mfa_challenge'}, 'continue_url': 'https://auth.openai.com/mfa-challenge/fixture'})
+        flow.submit_mfa_totp = Mock(return_value=challenge)
+    flow.kickoff_otp_delivery = Mock(return_value=True)
+    delivery = RuntimeError('fixture email delivery required')
+    mail = SimpleNamespace(wait_for_otp=Mock(side_effect=delivery))
+    with pytest.raises(RuntimeError) as raised:
+        flow.run_protocol_login(mail, 'fixture@example.test', password='fixture')
+    assert raised.value is delivery
+    mail.wait_for_otp.assert_called_once()
+    flow.signup.assert_not_called()
+
+
 @pytest.mark.parametrize('secret,expected', [('JBSWY3DPEHPK3PXP', 'invalid_2fa'), ('', 'missing_2fa'), ('INVALID-SECRET!', 'invalid_2fa_secret')])
 def test_totp_errors_stop_protocol_without_a_second_login(monkeypatch, secret, expected):
     flow = protocol_fixture(monkeypatch, secret)

@@ -9,6 +9,7 @@ const props = defineProps({
   connectionError: { type: String, default: '' }, authFailures: { type: Array, default: () => [] },
   planSummary: { type: String, default: '' },
   initiallyCollapsed: Boolean,
+  retryLabel: { type: String, default: 'Thử lại acc có thể cứu' },
 })
 const emit = defineEmits(['reload', 'stop', 'retry', 'filter'])
 const expanded = ref(!props.initiallyCollapsed && (props.running || !props.job))
@@ -70,7 +71,7 @@ function toggleDetails() {
         <ChevronDown :size="16" class="task-expand-icon" :class="{ expanded }" />
       </button>
       <div v-if="expanded || running" class="task-actions">
-        <el-button v-if="canRetry" type="warning" plain :loading="retrying" @click="emit('retry')">Thử lại acc có thể cứu</el-button>
+        <el-button v-if="canRetry" type="warning" plain :loading="retrying" @click="emit('retry')">{{ retryLabel }}</el-button>
         <el-button text aria-label="Tải lại tiến độ" @click="emit('reload')"><RotateCw :size="15" /><span>Tải lại</span></el-button>
         <el-button v-if="running" type="danger" plain :loading="cancelling" :disabled="stopRequested" @click="emit('stop')"><Square v-if="!cancelling" :size="13" /><span>{{ job?.cancel_requested ? 'Đang dừng' : stopRequested ? 'Đang gửi lệnh dừng' : 'Dừng tác vụ' }}</span></el-button>
       </div>

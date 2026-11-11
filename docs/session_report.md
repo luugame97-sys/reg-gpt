@@ -1,6 +1,17 @@
-# Trạng thái bàn giao — 02/11/2026
+# Trạng thái bàn giao — 12/11/2026
 
 Đọc cùng [AGENTS.md](../AGENTS.md), [cài máy mới](SETUP_VI.md) và [quy trình VPS](DEPLOYMENT.md). Đây là bản public, không chứa database hoặc credential; phải kiểm tra lại Git/VPS trước khi thay đổi.
+
+## Sửa nhận diện OTP và quét lại lỗi gói — 12/11/2026
+
+- Đăng nhập thông thường giữ lỗi mạng/máy chủ, không chuyển sang đăng ký dự phòng. Chỉ chờ OTP email khi có trạng thái email verification hoặc đúng đường dẫn xác minh; URL thiếu hoặc chuỗi xác minh nằm trong query không đủ bằng chứng. Luồng mật khẩu/2FA và OTP email thực sự vẫn được giữ.
+- Đợt kiểm tra gói thử tối đa 3 proxy cho lỗi kết nối khi đọc gói. Chỉ lượt đầu được làm mới AT; đổi proxy không đăng nhập lại. HTTP 401/403/429 và lỗi chứng chỉ không bị coi là lý do tự đổi proxy. Giữ kiểm tra TLS và dừng khi gặp giới hạn tốc độ.
+- Tài khoản/Tác vụ có **Quét lại tài khoản lỗi**, đọc đầy đủ kết quả theo job gốc, kiểm lại tình trạng tài khoản và chống gửi trùng. Có lựa chọn **Kiểm tra lại lỗi OTP mail đã lưu**, mặc định tắt; chỉ bỏ trạng thái chờ OTP trong lượt người dùng yêu cầu, vẫn chặn khóa/sai thông tin. Không xóa lỗi cũ hàng loạt hoặc tự chạy lại lịch sử.
+- UI cho xem số lượng trước khi bắt đầu, chọn proxy/worker; retry mặc định tối đa 10 worker. Bỏ qua acc đã kiểm tra gói thành công, đã xóa hoặc bị chặn, không quét lại toàn kho.
+- Kiểm chứng: 337 Python liên quan (291 regression, 3 case OTP thực sự và 43 OAuth), 164 Node đạt; Vite build đạt. Browser fixture lấy đủ 231 acc qua nhiều trang, tùy chọn OTP tăng đúng 1 acc, hoàn tất 231/231 và chuyển URL sang job mới; không lỗi console/tràn ngang tại viewport đã kiểm tra. Không đăng nhập/quét tài khoản thật để thử, chưa chứng minh mọi lỗi OTP/SSL thực tế đều đã hết.
+- Source nhánh `codex/account-otp-plan-retry-20261112`; đang hoàn tất commit/push và release. Preflight chỉ đọc xác nhận 12 source sửa khớp baseline, tổng 77 input được đối chiếu và gate idle gồm refresh lease. Chưa ghi runtime ở thời điểm cập nhật mục này.
+
+Các mục dưới là bàn giao baseline trước lần sửa này; không coi kết quả cũ là kiểm chứng cho source mới.
 
 ## Mã nguồn và đồng bộ
 

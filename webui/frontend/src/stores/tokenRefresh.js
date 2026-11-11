@@ -122,7 +122,7 @@ export const useTokenRefreshStore = defineStore('tokenRefresh', () => {
       schedule()
     }
   }
-  async function start(emails, proxy = '', otpTimeout = 180, proxyMode = 'pool', onlyExpired = false, operation = 'token_refresh', workers = null, skipUsable = true, includeMissing = true, retrySourceJobId = '', smartRefresh = true, refreshUsable = false) {
+  async function start(emails, proxy = '', otpTimeout = 180, proxyMode = 'pool', onlyExpired = false, operation = 'token_refresh', workers = null, skipUsable = true, includeMissing = true, retrySourceJobId = '', smartRefresh = true, refreshUsable = false, retryEmailOtp = false) {
     if (starting.value) return
     starting.value = true
     const requestId = localStorage.getItem(REQUEST_KEY) || crypto.randomUUID()
@@ -134,6 +134,10 @@ export const useTokenRefreshStore = defineStore('tokenRefresh', () => {
       else payload.operation = operation
       if (operation === 'token_refresh' && refreshUsable) Object.assign(payload, { refresh_usable: true, smart_refresh: true, only_expired: false, include_missing: false })
       if (operation === 'token_check') payload.skip_usable = skipUsable
+      if (operation === 'plus_check' && retrySourceJobId) {
+        payload.retry_source_job_id = retrySourceJobId
+        payload.retry_email_otp = retryEmailOtp
+      }
       if (operation === 'token_refresh' && retrySourceJobId) {
         payload.retry_source_job_id = retrySourceJobId
         payload.only_expired = false

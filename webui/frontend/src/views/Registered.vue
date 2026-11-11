@@ -28,7 +28,7 @@ onUnmounted(releaseCredentialClock)
 import { storeToRefs } from 'pinia'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Filter as FilterIcon } from 'lucide-vue-next'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   listRegistered, getRegistered, deleteRegistered, clearRegisteredRefreshError,
   bulkDeleteRegistered, bulkDeleteAccounts,
@@ -57,6 +57,7 @@ import AccountCredentials from '@/components/AccountCredentials.vue'
 import AccountQuota from '@/components/AccountQuota.vue'
 import { readSavedAccountViews } from '@/accountFilters'
 const route = useRoute()
+const router = useRouter()
 
 const { form } = storeToRefs(useFormStore())
 const { list: proxyList } = storeToRefs(useProxyStore())
@@ -180,6 +181,12 @@ const detailedColumns = ref(false)
 const toolsOpen = ref(false)
 const accountTable = ref(null)
 const refreshDialogVisible = ref(false)
+const planRetrySource = ref('')
+const planRetryEmailOtp = ref(false)
+const planRetryInfo = ref(null)
+const planRetryLoading = ref(false)
+const planRetryError = ref('')
+let planRetrySequence = 0
 const refreshScope = ref('filter')
 const refreshUsable = ref(false)
 const singleTaskEmail = ref('')
@@ -198,7 +205,7 @@ const currentJobIsCheck = computed(() => Boolean(refreshJob.value?.operation && 
 const currentJobIsAt = computed(() => refreshJob.value?.operation === 'token_check')
 const currentJobTitle = computed(() => TOKEN_JOB_LABELS[refreshJob.value?.operation] || TOKEN_JOB_LABELS.token_refresh)
 const refreshFolderCount = computed(() => groupFilter.value === 'all' ? 0 : groupFilter.value === '__ungrouped__' ? groupsSummary.value.ungrouped : Number(groupsSummary.value.groups.find(group => group.name === groupFilter.value)?.count || 0))
-const refreshScopeCount = computed(() => refreshScope.value === 'single' ? (singleTaskEmail.value ? 1 : 0) : refreshScope.value === 'selected' ? selected.value.length : refreshScope.value === 'page' ? rows.value.length : refreshScope.value === 'folder' ? refreshFolderCount.value : refreshScope.value === 'all' ? groupsSummary.value.total : total.value)
+const refreshScopeCount = computed(() => planRetrySource.value ? Number(planRetryInfo.value?.total_candidates || 0) : refreshScope.value === 'single' ? (singleTaskEmail.value ? 1 : 0) : refreshScope.value === 'selected' ? selected.value.length : refreshScope.value === 'page' ? rows.value.length : refreshScope.value === 'folder' ? refreshFolderCount.value : refreshScope.value === 'all' ? groupsSummary.value.total : total.value)
 const refreshSpecificScope = computed(() => ['single', 'selected'].includes(refreshScope.value))
 const refreshUsableActive = computed(() => !tokenDialogIsCheck.value && refreshSpecificScope.value && refreshUsable.value)
 const refreshCandidatesInfo = ref(null)
@@ -296,10 +303,37 @@ const planCheckSummary = computed(() => [
   ['multiple_plans', 'Nhiều gói'], ['plus_eligible', 'Free có ưu đãi'], ['banned', 'Khóa'], ['token_invalid', 'AT lỗi'],
 ].filter(([key]) => refreshJob.value?.counts?.[key]).map(([key, label]) => `${label} ${refreshJob.value.counts[key]}`).join(' · '))
 const retryingRefreshErrors = ref(false)
-const canRetryRefreshErrors = computed(() => refreshJob.value?.operation === 'token_refresh' && !refreshJobRunning.value && refreshJob.value.failed > 0)
+const canRetryRefreshErrors = computed(() => ['token_refresh', 'plus_check'].includes(refreshJob.value?.operation) && !refreshJobRunning.value && refreshJob.value.failed > 0)
+async function loadPlanRetryPreview() {
+  const source = planRetrySource.value
+  if (!source) return
+  const sequence = ++planRetrySequence
+  planRetryLoading.value = true
+  planRetryError.value = ''
+  planRetryInfo.value = null
+  try {
+    const info = await getRefreshRetryCandidates(source, { retry_email_otp: planRetryEmailOtp.value })
+    if (sequence === planRetrySequence && source === planRetrySource.value) planRetryInfo.value = info
+  } catch (error) {
+    if (sequence === planRetrySequence) planRetryError.value = error.message
+  } finally {
+    if (sequence === planRetrySequence) planRetryLoading.value = false
+  }
+}
 async function openRetryRefreshErrors() {
   if (!canRetryRefreshErrors.value || retryingRefreshErrors.value) return
   const source = refreshJob.value
+  if (source.operation === 'plus_check') {
+    planRetrySource.value = source.job_id
+    planRetryEmailOtp.value = false
+    singleTaskEmail.value = ''
+    tokenJobOperation.value = 'plus_check'
+    refreshProxyMode.value = source.routing?.mode === 'single' ? 'single' : 'pool'
+    tokenTaskWorkers.value = Math.min(10, Number(source.routing?.workers) || 3)
+    refreshDialogVisible.value = true
+    await loadPlanRetryPreview()
+    return
+  }
   const mode = ['pool', 'single', 'direct'].includes(source.routing?.mode) ? source.routing.mode : refreshProxyMode.value
   if (mode === 'single' && !proxyText(form.value)) {
     ElMessage.warning('Hãy chọn lại proxy riêng của đợt này trước khi thử lại.')
@@ -690,9 +724,13 @@ async function submitBatchRefreshTokens() {
   try {
     if (!refreshScopeCount.value) { ElMessage.info('Phạm vi đã chọn không có tài khoản'); return }
     let emails = []
-    const chosen = refreshScope.value === 'single' ? [{email:singleTaskEmail.value}] : refreshScope.value === 'selected' ? selected.value : refreshScope.value === 'page' ? rows.value : null
+    const chosen = planRetrySource.value ? null : refreshScope.value === 'single' ? [{email:singleTaskEmail.value}] : refreshScope.value === 'selected' ? selected.value : refreshScope.value === 'page' ? rows.value : null
     if (chosen && !chosen.length) { ElMessage.info('Phạm vi đã chọn không có tài khoản'); return }
-    if (refreshFilterActive.value) {
+    if (planRetrySource.value) {
+      const info = await getRefreshRetryCandidates(planRetrySource.value, { retry_email_otp: planRetryEmailOtp.value })
+      planRetryInfo.value = info
+      emails = info.emails || []
+    } else if (refreshFilterActive.value) {
       const candidates = await requestRefreshCandidateInfo()
       refreshCandidatesInfo.value = candidates
       emails = candidates.emails || []
@@ -703,7 +741,8 @@ async function submitBatchRefreshTokens() {
       ElMessage.info(refreshFilterActive.value ? `Không còn acc đủ điều kiện làm mới. Đã có AT dùng được ${(refreshCandidatesInfo.value?.total_unexpired || 0) + (refreshCandidatesInfo.value?.total_usable || 0)}, sai TK/MK/2FA ${refreshCandidatesInfo.value?.total_auth_errors || 0}, bị khóa ${refreshCandidatesInfo.value?.total_banned || 0}, chờ xử lý mail OTP ${refreshCandidatesInfo.value?.total_email_otp_hold || 0}, chưa rõ hạn ${refreshCandidatesInfo.value?.total_unknown || 0}.` : 'Không có tài khoản nào trong phạm vi tác vụ')
       return
     }
-    await tokenRefresh.start(emails, proxyText(form.value), Math.max(60, Math.min(600, Number(form.value.otpTimeout) || 180)), refreshProxyMode.value, !tokenDialogIsCheck.value && !refreshUsableActive.value, tokenJobOperation.value, tokenTaskWorkers.value, checkSkipUsable.value, true, '', true, refreshUsableActive.value)
+    const started = await tokenRefresh.start(emails, proxyText(form.value), Math.max(60, Math.min(600, Number(form.value.otpTimeout) || 180)), refreshProxyMode.value, !tokenDialogIsCheck.value && !refreshUsableActive.value, tokenJobOperation.value, tokenTaskWorkers.value, checkSkipUsable.value, true, planRetrySource.value, true, refreshUsableActive.value, planRetryEmailOtp.value)
+    if (planRetrySource.value && started?.job_id) router.replace({ path: '/registered', query: { job: started.job_id } })
     refreshDialogVisible.value = false
     ElMessage.success(`Đã nhận đủ ${emails.length} tài khoản để ${tokenDialogTitle.value.toLowerCase()}.`)
   } catch (error) {
@@ -1541,6 +1580,10 @@ async function saveEdit() {
 }
 
 let searchTimer = null
+watch(planRetryEmailOtp, () => { if (planRetrySource.value) loadPlanRetryPreview() })
+watch(refreshDialogVisible, open => {
+  if (!open) { planRetrySource.value = ''; planRetryInfo.value = null; ++planRetrySequence; planRetryLoading.value = false; planRetryError.value = '' }
+})
 watch(refreshScope, () => { if (!refreshSpecificScope.value) refreshUsable.value = false })
 watch(() => refreshDialogVisible.value && refreshFilterActive.value ? JSON.stringify({ ...refreshCandidateParams(), scope: refreshScope.value }) : '', loadRefreshCandidatePreview)
 watch(keyword, () => {
@@ -1574,7 +1617,15 @@ function openRouteContext() {
     if (['needs','errors','paid'].includes(view)) filter.value = ({needs:'at_needs_refresh',errors:'refresh_errors',paid:'plan_paid'})[view]
     if (view === 'errors' && ERROR_FILTERS.includes(route.query.error)) errorFilter.value = route.query.error
   }
-  if (route.query.job) tokenRefresh.follow(String(route.query.job)).catch(error => ElMessage.error(error.message))
+  if (route.query.job) {
+    const jobId = String(route.query.job)
+    tokenRefresh.follow(jobId).then(() => {
+      if (active.value && route.query.job === jobId && route.query.retry === 'plan' && refreshJob.value?.job_id === jobId) {
+        openRetryRefreshErrors()
+        router.replace({ path: '/registered', query: { job: jobId } })
+      }
+    }).catch(error => ElMessage.error(error.message))
+  }
   else tokenRefresh.restore()
   return targetAccount
 }
@@ -1592,7 +1643,15 @@ onActivated(() => {
     <el-dialog append-to-body v-model="tokenDetailVisible" title="Trạng thái Access Token" width="460px"><div v-if="tokenDetailRow" class="token-details"><strong class="mono">{{ tokenDetailRow.email }}</strong><el-tag :type="tokenStatus(tokenDetailRow).type">{{ tokenStatus(tokenDetailRow).text }}</el-tag><span>{{ tokenStatus(tokenDetailRow).detail }}</span><p>{{ tokenStatus(tokenDetailRow).tooltip }}</p><small v-if="tokenStatus(tokenDetailRow).checked_at">Đã kiểm tra: {{ fmtTime(tokenStatus(tokenDetailRow).checked_at) }}</small></div><template #footer><el-button :disabled="refreshJobRunning" @click="tokenDetailVisible = false; doSingleCheckLive(tokenDetailRow)">Kiểm tra AT…</el-button><el-button type="primary" :disabled="refreshJobRunning" @click="tokenDetailVisible = false; doSingleRefresh(tokenDetailRow)">Làm mới AT…</el-button></template></el-dialog>
     <el-dialog append-to-body v-model="refreshDialogVisible" :title="refreshUsableActive ? 'Cưỡng chế làm mới AT' : tokenDialogTitle" width="560px" top="4vh" class="account-scope-dialog token-task-dialog" :close-on-click-modal="!refreshingTokens" :show-close="!refreshingTokens">
       <el-form label-position="top">
-        <el-form-item label="Phạm vi tài khoản">
+        <template v-if="planRetrySource">
+          <p>Quét lại tài khoản lỗi của đợt đã chọn, bao gồm mọi trang kết quả.</p>
+          <el-checkbox v-model="planRetryEmailOtp" :disabled="refreshingTokens">Kiểm tra lại lỗi OTP mail đã lưu</el-checkbox>
+          <p class="hint">Cho phép thử đăng nhập lại một lần trong đợt này. Nếu máy chủ thực sự yêu cầu OTP email, vẫn cần đường nhận mã hợp lệ.</p>
+          <p v-if="planRetryInfo" class="hint">Tổng lỗi {{ planRetryInfo.total_failed }} · Đã kiểm tra gói thành công {{ planRetryInfo.excluded_usable }} · Khóa hoặc sai thông tin {{ planRetryInfo.excluded_terminal }} · Chờ OTP {{ planRetryInfo.excluded_email_otp }} · Không còn trong kho {{ planRetryInfo.excluded_missing }}<template v-if="planRetryInfo.email_otp_rechecks"> · Kiểm tra lại OTP {{ planRetryInfo.email_otp_rechecks }}</template></p>
+          <p v-if="planRetryLoading" class="hint">Đang lấy toàn bộ tài khoản lỗi…</p>
+          <el-alert v-if="planRetryError" :title="planRetryError" type="error" :closable="false" />
+        </template>
+        <el-form-item v-else label="Phạm vi tài khoản">
           <el-radio-group v-model="refreshScope" class="scope-choices" :class="{ 'refresh-scope-choices': !tokenDialogIsCheck }" :disabled="refreshingTokens">
             <el-radio v-if="singleTaskEmail" value="single">Tài khoản này <b>1</b><span class="mono">{{ singleTaskEmail }}</span></el-radio>
             <el-radio value="selected" :disabled="!selected.length">Đã chọn <b>{{ selected.length }}</b><span>Giữ lựa chọn qua các trang</span></el-radio>
@@ -1638,13 +1697,13 @@ onActivated(() => {
         <span v-else>{{ tokenDialogIsCheck ? 'Chạy trên VPS, có thể đóng tab hoặc dừng quét' : 'Lưu tiến độ và kết quả trên VPS' }}</span>
         <span v-if="refreshCandidatesError">{{ refreshCandidatesError }}</span>
       </div>
-      <template #footer><el-button :disabled="refreshingTokens" @click="refreshDialogVisible = false">Hủy</el-button><el-button type="primary" :loading="refreshingTokens" :disabled="!refreshScopeCount || refreshJobRunning || refreshCandidatesLoading" @click="submitBatchRefreshTokens">{{ tokenDialogIsCheck ? 'Bắt đầu quét' : 'Bắt đầu làm mới' }}</el-button></template>
+      <template #footer><el-button :disabled="refreshingTokens" @click="refreshDialogVisible = false">Hủy</el-button><el-button type="primary" :loading="refreshingTokens" :disabled="!refreshScopeCount || refreshJobRunning || refreshCandidatesLoading || planRetryLoading || !!planRetryError" @click="submitBatchRefreshTokens">{{ tokenDialogIsCheck ? 'Bắt đầu quét' : 'Bắt đầu làm mới' }}</el-button></template>
     </el-dialog>
     <AccountTaskProgress v-if="refreshJob || refreshConnectionError"
       initially-collapsed
       :job="refreshJob" :title="currentJobTitle" :running="refreshJobRunning"
       :cancelling="submittingStop" :stop-requested="refreshStopRequested"
-      :can-retry="canRetryRefreshErrors" :retrying="retryingRefreshErrors"
+      :can-retry="canRetryRefreshErrors" :retrying="retryingRefreshErrors" :retry-label="refreshJob?.operation === 'plus_check' ? 'Quét lại tài khoản lỗi' : 'Thử lại acc có thể cứu'"
       :connection-error="refreshConnectionError" :auth-failures="authFailureSummary" :plan-summary="planCheckSummary"
       @reload="tokenRefresh.restore" @stop="stopTokenRefresh" @retry="openRetryRefreshErrors" @filter="filterRefreshError"
     />

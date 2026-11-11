@@ -272,7 +272,7 @@ class TokenRefreshJobs:
                 counts=counts, completed=completed, remaining=len(emails) - completed,
                 succeeded=sum(counts.get(s, 0) for s in ({"valid", "checkout_ok"} | PLAN_SUCCESS_STATUSES | QUOTA_SUCCESS_STATUSES)),
                 failed=sum(counts.get(s, 0) for s in ("unknown", "error", "checkout_failed", "rate_limited")),
-                skipped=counts.get("skipped_unexpired", 0) + counts.get("skipped_usable", 0),
+                skipped=counts.get("skipped_unexpired", 0) + counts.get("skipped_usable", 0) + counts.get("skipped", 0),
                 results=[json.loads(item["result_json"]) for item in reversed(recent)],
                 results_truncated=completed > len(recent),
                 auth_error_counts={item["code"]: item["n"] for item in auth_errors if item["code"] in TERMINAL_AUTH_CODES},
@@ -283,7 +283,7 @@ class TokenRefreshJobs:
                 succeeded, skipped = counts.get("refresh_ok", 0), counts.get("skipped", 0)
                 snapshot.update(succeeded=succeeded, skipped=skipped, failed=completed - succeeded - skipped)
             elif row["operation"] in {"plus_check", "quota_check"}:
-                snapshot["failed"] = completed - snapshot["succeeded"]
+                snapshot["failed"] = completed - snapshot["succeeded"] - snapshot["skipped"]
         return snapshot
 
     def get(self, job_id):
@@ -340,7 +340,7 @@ class TokenRefreshJobs:
                     succeeded, skipped = counts.get('refresh_ok', 0), counts.get('skipped', 0)
                 else:
                     succeeded = sum(counts.get(s, 0) for s in ({'valid', 'checkout_ok'} | PLAN_SUCCESS_STATUSES | QUOTA_SUCCESS_STATUSES))
-                    skipped = counts.get('skipped_unexpired', 0) + counts.get('skipped_usable', 0)
+                    skipped = counts.get('skipped_unexpired', 0) + counts.get('skipped_usable', 0) + counts.get('skipped', 0)
                 failed = (completed - succeeded - skipped if row['operation'] in {'token_refresh', 'plus_check', 'quota_check'}
                           else sum(counts.get(s, 0) for s in ('unknown', 'error', 'checkout_failed', 'rate_limited')))
                 partial = json.loads(row['partial'] or '{}')
@@ -360,23 +360,62 @@ class TokenRefreshJobs:
             })
         return result
 
-    def _retry_source_results(self, job_id):
+    def _retry_source_results(self, job_id, operation="token_refresh"):
         self.initialize()
         with closing(db._conn()) as con:
             row = con.execute("SELECT operation,state,results_json,routing_json FROM token_refresh_jobs WHERE job_id=?", (job_id,)).fetchone()
             if row is None:
                 raise KeyError(job_id)
-            if row["operation"] != "token_refresh":
-                raise ValueError("Chức năng này dành cho lỗi làm mới token.")
+            if row["operation"] != operation or operation not in {"token_refresh", "plus_check"}:
+                raise ValueError("Loại tác vụ thử lại không khớp đợt gốc.")
             if row["state"] in ACTIVE_STATES:
                 raise ValueError("Hãy chờ đợt hiện tại kết thúc hoặc dừng an toàn trước khi thử lại.")
-            if json.loads(row["routing_json"] or "{}").get("result_storage") == "rows":
+            if operation != "token_refresh" or json.loads(row["routing_json"] or "{}").get("result_storage") == "rows":
                 results = [json.loads(item[0]) for item in con.execute("SELECT result_json FROM token_check_job_results WHERE job_id=? ORDER BY position", (job_id,))]
             else:
                 results = json.loads(row["results_json"] or "[]")
         return [item for item in results if item.get("email") and not item.get("ok") and not item.get("skipped")]
 
-    def retry_candidates(self, job_id):
+    @staticmethod
+    def _plan_retry_reason(record, retry_email_otp=False):
+        reason = refresh_retry_block(record, retry_email_otp=retry_email_otp)
+        if reason:
+            return reason
+        plan = (record.get("extra") or {}).get("plus_check") or {}
+        if plan.get("membership_verified") and plan.get("status") in PLAN_SUCCESS_STATUSES:
+            return "plan_verified"
+        return None
+
+    def retry_candidates(self, job_id, *, retry_email_otp=False):
+        self.initialize()
+        with closing(db._conn()) as con:
+            source = con.execute("SELECT operation FROM token_refresh_jobs WHERE job_id=?", (job_id,)).fetchone()
+        if source is None:
+            raise KeyError(job_id)
+        if source["operation"] == "plus_check":
+            failures = self._retry_source_results(job_id, "plus_check")
+            emails, seen = [], set()
+            counts = {key: 0 for key in ("excluded_terminal", "excluded_usable", "excluded_missing", "excluded_email_otp", "email_otp_rechecks")}
+            for result in failures:
+                email = str(result["email"]).strip().lower()
+                if email in seen:
+                    continue
+                seen.add(email)
+                if result.get("status") == "banned":
+                    counts["excluded_terminal"] += 1
+                    continue
+                record = db.get_registered(email)
+                reason = self._plan_retry_reason(record, retry_email_otp)
+                if reason:
+                    key = {"missing_record": "excluded_missing", "email_otp_hold": "excluded_email_otp", "plan_verified": "excluded_usable"}.get(reason, "excluded_terminal")
+                    counts[key] += 1
+                else:
+                    emails.append(email)
+                    counts["email_otp_rechecks"] += bool(stored_email_otp_hold(record))
+            return {"source_job_id": job_id, "operation": "plus_check", "emails": emails,
+                    "total_candidates": len(emails), "total_failed": len(seen), **counts}
+        if retry_email_otp:
+            raise ValueError("Kiểm tra lại OTP đã lưu chỉ áp dụng cho đợt quét lại gói.")
         failures = self._retry_source_results(job_id)
         emails, seen = [], set()
         counts = {"excluded_terminal": 0, "excluded_usable": 0, "excluded_missing": 0, "excluded_email_otp": 0}
@@ -429,7 +468,7 @@ class TokenRefreshJobs:
                     "reason": "smart_" + state, "traffic": traffic_summary()}
         return None
 
-    def start(self, emails, *, proxy="", otp_timeout=180, request_id="", proxy_mode="single", only_expired=False, operation="token_refresh", workers=None, skip_usable=False, include_missing=True, retry_source_job_id="", smart_refresh=False, refresh_usable=False):
+    def start(self, emails, *, proxy="", otp_timeout=180, request_id="", proxy_mode="single", only_expired=False, operation="token_refresh", workers=None, skip_usable=False, include_missing=True, retry_source_job_id="", smart_refresh=False, refresh_usable=False, retry_email_otp=False):
         self.initialize()
         if operation not in {"token_refresh", "token_check", "plus_check", "checkout_check", "quota_check"}:
             raise ValueError("Loại tác vụ token không hợp lệ.")
@@ -451,12 +490,17 @@ class TokenRefreshJobs:
         cleaned = list(dict.fromkeys(str(email).strip().lower() for email in emails if str(email).strip()))
         if not cleaned:
             raise ValueError("Chọn ít nhất một tài khoản cho tác vụ.")
+        if retry_email_otp and (operation != "plus_check" or not retry_source_job_id):
+            raise ValueError("Kiểm tra lại OTP đã lưu cần chọn một đợt lỗi kiểm tra gói.")
         if retry_source_job_id:
             if refresh_usable:
                 raise ValueError("Chế độ thử lại lỗi chỉ làm mới AT cần cứu.")
-            if operation != "token_refresh":
-                raise ValueError("Chỉ thử lại các lỗi làm mới token bằng chế độ này.")
-            allowed = {str(item["email"]).strip().lower() for item in self._retry_source_results(retry_source_job_id) if retryable_refresh_failure(item)}
+            if operation not in {"token_refresh", "plus_check"}:
+                raise ValueError("Chỉ thử lại lỗi làm mới AT hoặc kiểm tra gói bằng chế độ này.")
+            failures = self._retry_source_results(retry_source_job_id, operation)
+            allowed = {str(item["email"]).strip().lower() for item in failures
+                       if (operation == "plus_check" and item.get("status") != "banned")
+                       or (operation == "token_refresh" and retryable_refresh_failure(item))}
             if not set(cleaned).issubset(allowed):
                 raise ValueError("Danh sách thử lại có tài khoản thành công hoặc lỗi xác thực không được phép thử lại.")
             only_expired, include_missing = False, False
@@ -483,6 +527,8 @@ class TokenRefreshJobs:
             request_config.append("include_missing")
         if retry_source_job_id:
             request_config.extend(["retry_source_job_id", retry_source_job_id])
+        if retry_email_otp:
+            request_config.append("retry_email_otp")
         if smart_refresh:
             request_config.append("smart_refresh")
         if refresh_usable:
@@ -526,6 +572,8 @@ class TokenRefreshJobs:
                 routing["include_missing"] = True
             if retry_source_job_id:
                 routing["retry_source_job_id"] = retry_source_job_id
+            if retry_email_otp:
+                routing["retry_email_otp"] = True
             if smart_refresh:
                 routing["smart_refresh"] = True
             if refresh_usable:
@@ -822,23 +870,40 @@ class TokenRefreshJobs:
             save_task_traffic(email, "token_check", result["traffic"])
         return result
 
-    def _check_with_lease(self, job_id, email, leases, operation, skip_usable=False):
+    def _check_with_lease(self, job_id, email, leases, operation, skip_usable=False, retry_source_job_id="", retry_email_otp=False):
         if self._stop_requested(job_id):
             return None
         if skip_usable:
             result = self._skip_usable_check(email)
             if result:
                 return result
-        index = leases.acquire()
-        if index is None:
+        if operation == "plus_check" and retry_source_job_id:
+            reason = self._plan_retry_reason(db.get_registered(email), retry_email_otp)
+            if reason:
+                return {"email": email, "ok": True, "skipped": True, "status": "skipped", "reason": reason, "traffic": traffic_summary()}
+        results = []
+        for attempt in range(3 if operation == "plus_check" else 1):
+            index = leases.acquire()
+            if index is None:
+                break
+            failed = False
+            try:
+                options = {"allow_refresh": attempt == 0, "retry_email_otp": retry_email_otp} if operation == "plus_check" else {}
+                result = self._check_account(job_id, email, leases.candidates[index], operation, skip_usable, **options)
+                if result is None:
+                    break
+                results.append(result)
+                failed = operation == "plus_check" and bool(result.get("proxy_retryable"))
+            finally:
+                leases.release(index, failed=failed, error_code="plan_proxy_error")
+            if not failed or self._stop_requested(job_id):
+                break
+        if not results:
             return None
-        try:
-            return self._check_account(job_id, email, leases.candidates[index], operation, skip_usable)
-        finally:
-            leases.release(index)
+        return {**results[-1], "traffic": sum_traffic(results)}
 
     @measure_job_account()
-    def _check_account(self, job_id, email, proxy, operation, skip_usable=False):
+    def _check_account(self, job_id, email, proxy, operation, skip_usable=False, *, allow_refresh=True, retry_email_otp=False):
         if self._stop_requested(job_id):
             return None
         if skip_usable:
@@ -849,7 +914,7 @@ class TokenRefreshJobs:
         try:
             if operation == "plus_check":
                 from .app import CheckPlusReq, api_check_plus
-                response = api_check_plus(CheckPlusReq(emails=[email], proxy=proxy))
+                response = api_check_plus(CheckPlusReq(emails=[email], proxy=proxy, allow_refresh=allow_refresh, retry_email_otp=retry_email_otp))
                 result = (response.get("results") or {}).get(email) or {"status": "error", "message": "Không nhận được kết quả dò Plus"}
                 result = {**result, "ok": result.get("status") in PLAN_SUCCESS_STATUSES, "message": result.get("label") or result.get("message", ""),
                           "rate_limited": bool(result.get("rate_limited") or result.get("label") == "HTTP 429")}
@@ -867,6 +932,7 @@ class TokenRefreshJobs:
             result = {key: value for key, value in result.items() if key in {
                 "status", "message", "at_exp", "checked_at", "traffic", "ok", "rate_limited", "free_trial", "amount_minor", "currency", "http_status",
                 "plan_type", "plans", "membership_verified", "expires_at", "trial_eligible", "accounts_http_status", "memberships_http_status", "quota_check",
+                "error_code", "proxy_retryable",
             }}
         except Exception as exc:
             result = {"status": "unknown", "message": f"Không quét được tài khoản: {type(exc).__name__}", "checked_at": time.time()}
@@ -917,7 +983,7 @@ class TokenRefreshJobs:
         operation = self.get(job_id)["operation"]
         workers = int(routing.get("workers") or DEFAULT_WORKERS[operation])
         rate_limited = False
-        leases = _ProxyLeases(self, job_id, candidates) if routing["mode"] == "pool" and workers > 1 else None
+        leases = _ProxyLeases(self, job_id, candidates) if operation == "plus_check" or (routing["mode"] == "pool" and workers > 1) else None
         cursor = self._pool_cursor if routing["mode"] == "pool" else 0
         try:
             with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="account-check") as pool:
@@ -929,7 +995,7 @@ class TokenRefreshJobs:
                         if operation == "token_refresh":
                             future = pool.submit(self._refresh_parallel_account, job_id, email, leases, _otp_timeout, routing.get("only_expired"), routing.get("include_missing", False), routing.get("retry_source_job_id", ""), routing.get("smart_refresh", False), routing.get("refresh_usable", False))
                         elif leases:
-                            future = pool.submit(self._check_with_lease, job_id, email, leases, operation, routing.get("skip_usable", False))
+                            future = pool.submit(self._check_with_lease, job_id, email, leases, operation, routing.get("skip_usable", False), routing.get("retry_source_job_id", ""), routing.get("retry_email_otp", False))
                         else:
                             proxy = candidates[cursor % len(candidates)]
                             cursor += 1

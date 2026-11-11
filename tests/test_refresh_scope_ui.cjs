@@ -3,6 +3,7 @@ const view=fs.readFileSync(path.join(__dirname,'../webui/frontend/src/views/Regi
 function harness(){
  const context={ref:value=>({value}),computed:fn=>({get value(){return fn()}}),module:{exports:{}},
   refreshScope:{value:'filter'},refreshUsable:{value:false},singleTaskEmail:{value:''},tokenJobOperation:{value:'token_refresh'},
+  planRetrySource:{value:''},planRetryInfo:{value:null},planRetryEmailOtp:{value:false},
   tokenDialogIsCheck:{value:false},selected:{value:[{email:'chosen@example.test'}]},rows:{value:[{email:'page@example.test'}]},
   total:{value:1},groupFilter:{value:'Folder A'},groupsSummary:{value:{total:900,ungrouped:20,groups:[{name:'Folder A',count:200}]}},
   accountFilterParams:()=>({filter:'token_valid',group:'Folder A',q:'specific',country:'VN'})}
@@ -10,6 +11,24 @@ function harness(){
  return {context,...context.module.exports}
 }
 const plain=value=>JSON.parse(JSON.stringify(value))
+
+test('plan retry uses the full failed-job scope even with an empty stale selection',async()=>{
+ const h=harness(),ctx=h.context,started=[],navigated=[]
+ Object.assign(ctx,{refreshProxyMode:{value:'pool'},form:{value:{otpTimeout:180}},proxyText:()=>'',refreshingTokens:{value:false},
+  refreshFilterActive:{value:false},tokenDialogIsCheck:{value:true},refreshDialogVisible:{value:true},tokenTaskWorkers:{value:10},checkSkipUsable:{value:true},
+  tokenDialogTitle:{value:'Kiểm tra gói'},ElMessage:{info:()=>{},warning:()=>{},error:message=>{throw Error(message)},success:()=>{}},
+  getRefreshRetryCandidates:async(id,options)=>{assert.equal(id,'failed-job');assert.equal(options.retry_email_otp,true);return {emails:Array.from({length:231},(_,i)=>`fixture-${i}@example.test`)}},
+  collectFilteredEmails:()=>{throw Error('Do not use current filters')},router:{replace:location=>navigated.push(location)},
+  tokenRefresh:{start:async(...args)=>{started.push(args);return {job_id:'new-job'}}}})
+ ctx.planRetrySource.value='failed-job';ctx.planRetryEmailOtp.value=true;ctx.planRetryInfo.value={total_candidates:231}
+ ctx.tokenJobOperation.value='plus_check';ctx.refreshScope.value='selected';ctx.selected.value=[]
+ const start=view.indexOf('async function submitBatchRefreshTokens()'),end=view.indexOf('// ── Kiểm tra AT theo hạn JWT',start)
+ vm.runInNewContext(view.slice(start,end)+'\nmodule.exports={submitBatchRefreshTokens}',ctx)
+ await ctx.module.exports.submitBatchRefreshTokens()
+ assert.equal(started.length,1);assert.equal(started[0][0].length,231)
+ assert.equal(started[0][5],'plus_check');assert.equal(started[0][9],'failed-job');assert.equal(started[0][12],true)
+ assert.equal(navigated[0].query.job,'new-job');assert.equal(ctx.refreshDialogVisible.value,false)
+})
 
 test('folder and all scopes ignore visual filters and cannot inherit a manual refresh choice',()=>{
  const h=harness();h.context.refreshUsable.value=true

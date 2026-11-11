@@ -46,8 +46,8 @@ export const startTokenCheckJob = (payload) =>
   http.post('/api/registered/check_jobs', payload, { timeout: 15000 })
 export const getTokenRefreshJob = (jobId) =>
   http.get(`/api/registered/refresh_jobs/${encodeURIComponent(jobId)}`, { timeout: 15000 })
-export const getRefreshRetryCandidates = (jobId) =>
-  http.get(`/api/registered/refresh_jobs/${encodeURIComponent(jobId)}/retry_candidates`, { timeout: 15000 })
+export const getRefreshRetryCandidates = (jobId, params = {}) =>
+  http.get(`/api/registered/refresh_jobs/${encodeURIComponent(jobId)}/retry_candidates`, { params, timeout: 15000 })
 export const cancelTokenRefreshJob = (jobId) =>
   http.post(`/api/registered/refresh_jobs/${encodeURIComponent(jobId)}/cancel`, {}, { timeout: 15000 })
 export const findTokenRefreshJobs = (params = {}) =>

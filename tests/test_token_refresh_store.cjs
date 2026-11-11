@@ -7,6 +7,19 @@ const source = fs.readFileSync(path.join(__dirname, '../webui/frontend/src/store
   .replace(/^import .*$/gm, '').replace('export const useTokenRefreshStore', 'const useTokenRefreshStore')
 const queued = {job_id: 'job-1', state: 'queued', total: 1, completed: 0, emails: ['fixture@example.test'], results: []}
 
+test('plan retry keeps the exact source job and requires explicit OTP recheck', async () => {
+  for (const retryOtp of [false, true]) {
+    const h = harness()
+    await h.store.start(['fixture@example.test'], '', 180, 'pool', false, 'plus_check', 5, true, true, 'source-job', true, false, retryOtp)
+    assert.equal(h.posted.length, 0)
+    assert.equal(h.checks.length, 1)
+    assert.equal(h.checks[0].operation, 'plus_check')
+    assert.equal(h.checks[0].retry_source_job_id, 'source-job')
+    assert.equal(h.checks[0].retry_email_otp, retryOtp)
+    assert.equal(h.checks[0].smart_refresh, undefined)
+  }
+})
+
 function harness(api = {}, stored = {}) {
   const storage = new Map(Object.entries(stored)), timers = new Map(), posted = [], cancelled = [], checks = []
   let nextTimer = 0

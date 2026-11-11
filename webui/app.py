@@ -1176,6 +1176,8 @@ class CheckTokenJobReq(BaseModel):
     proxy_mode: str = Field("pool", pattern=r"^(pool|single|direct)$")
     workers: Optional[int] = Field(None, ge=1, le=100)
     skip_usable: bool = True
+    retry_source_job_id: str = Field("", max_length=32, pattern=r"^(?:[a-f0-9]{32})?$")
+    retry_email_otp: bool = False
 
 
 @app.post("/api/registered/check_jobs", status_code=202)
@@ -1183,7 +1185,10 @@ def api_start_token_check_job(req: CheckTokenJobReq):
     from .token_refresh_jobs import JOBS, RefreshBusyError, RefreshRequestConflict
     try:
         job = JOBS.start(req.emails, proxy=req.proxy.strip(), request_id=req.request_id,
-                         proxy_mode=req.proxy_mode, operation=req.operation, workers=req.workers, skip_usable=req.skip_usable)
+                         proxy_mode=req.proxy_mode, operation=req.operation, workers=req.workers, skip_usable=req.skip_usable,
+                         retry_source_job_id=req.retry_source_job_id, retry_email_otp=req.retry_email_otp)
+    except KeyError as exc:
+        raise HTTPException(404, "Không tìm thấy đợt kiểm tra gốc.") from exc
     except RefreshBusyError as exc:
         raise HTTPException(409, {"message": str(exc), "job_id": exc.job_id}) from exc
     except RefreshRequestConflict as exc:
@@ -1310,10 +1315,10 @@ def api_cancel_refresh_job(job_id: str):
 
 
 @app.get("/api/registered/refresh_jobs/{job_id}/retry_candidates")
-def api_refresh_retry_candidates(job_id: str):
+def api_refresh_retry_candidates(job_id: str, retry_email_otp: bool = False):
     from .token_refresh_jobs import JOBS
     try:
-        return {"ok": True, **JOBS.retry_candidates(job_id)}
+        return {"ok": True, **JOBS.retry_candidates(job_id, retry_email_otp=retry_email_otp)}
     except KeyError as exc:
         raise HTTPException(404, "Không tìm thấy đợt làm mới token.") from exc
     except ValueError as exc:
@@ -1959,6 +1964,8 @@ def api_update_credentials(req: UpdateCredReq):
 
 
 class CheckPlusReq(BaseModel):
+    allow_refresh: bool = True
+    retry_email_otp: bool = False
     emails: list[str] = Field(..., description="要检查的邮箱列表")
     proxy: str = Field("", description="查询代理，留空直连")
 
@@ -2061,7 +2068,10 @@ def api_check_plus(req: CheckPlusReq):
                     nonlocal credential, at, refreshed
                     from .token_refresh import refresh_one
                     refreshed = True
-                    reply = refresh_one(email, proxy=proxy)
+                    if not req.allow_refresh:
+                        return {"ok": False, "error": "Cần làm mới AT trước khi quét gói"}
+                    options = {"retry_email_otp": True} if req.retry_email_otp else {}
+                    reply = refresh_one(email, proxy=proxy, **options)
                     if reply.get("ok"):
                         credential = db.get_registered(email) or {}
                         at = (credential.get("access_token") or "").strip()

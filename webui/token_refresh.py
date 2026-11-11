@@ -433,10 +433,13 @@ def _rt_metadata(tokens, client_id, status='valid'):
             'rt_refresh': {'status': status, 'fingerprint': fingerprint, 'checked_at': time.time()}}
 
 
-def cached_refresh_result(record):
-    if not record or not refresh_retry_block(record):
+def cached_refresh_result(record, *, retry_email_otp=False):
+    reason = refresh_retry_block(record, retry_email_otp=retry_email_otp)
+    if not record or not reason:
         return None
-    return cached_email_otp_result(record) or cached_auth_result(record) or {
+    if reason == 'email_otp_hold':
+        return cached_email_otp_result(record)
+    return cached_auth_result(record) or {
         'email': record['email'], 'ok': False, 'status': 'banned', **auth_failure('account_disabled'),
     }
 
@@ -486,7 +489,7 @@ def _try_refresh_token_exchange(refresh_token: str, proxy: str = '', *, client_i
 
 
 @measure_token_task("token_refresh")
-def refresh_one(email: str, *, proxy: str = "", otp_timeout: int = 180) -> dict:
+def refresh_one(email: str, *, proxy: str = "", otp_timeout: int = 180, retry_email_otp: bool = False) -> dict:
     """Serialize each account's rotating grant across workers and processes."""
     email = (email or '').strip().lower()
     if not db.get_registered(email):
@@ -495,19 +498,19 @@ def refresh_one(email: str, *, proxy: str = "", otp_timeout: int = 180) -> dict:
     if not db.acquire_registered_refresh(email, owner):
         return {'email': email, 'ok': False, **auth_failure('refresh_busy')}
     try:
-        return _refresh_one_locked(email, proxy=proxy, otp_timeout=otp_timeout, lease=owner)
+        return _refresh_one_locked(email, proxy=proxy, otp_timeout=otp_timeout, lease=owner, retry_email_otp=retry_email_otp)
     finally:
         db.release_registered_refresh(email, owner)
 
 
-def _refresh_one_locked(email, *, proxy, otp_timeout, lease):
+def _refresh_one_locked(email, *, proxy, otp_timeout, lease, retry_email_otp=False):
     email = (email or "").strip().lower()
     started = time.perf_counter()
 
     cred = db.get_registered(email)
     if not cred:
         return {"email": email, "ok": False, **auth_failure("account_not_found")}
-    known = cached_refresh_result(cred)
+    known = cached_refresh_result(cred, retry_email_otp=retry_email_otp)
     if known:
         return known
 
@@ -571,7 +574,7 @@ def _refresh_one_locked(email, *, proxy, otp_timeout, lease):
             return {'email': email, 'ok': False, **auth_failure('rt_invalid_response'), 'method': 'refresh_token'}
 
     # ── Bước 2: Chạy Protocol Login bằng Mật khẩu + TOTP 2FA ──
-    known_login = cached_auth_result(cred) or cached_email_otp_result(cred)
+    known_login = cached_auth_result(cred) or (None if retry_email_otp else cached_email_otp_result(cred))
     if known_login:
         return known_login
     if not password:
