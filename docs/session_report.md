@@ -2,6 +2,14 @@
 
 Đọc cùng [AGENTS.md](../AGENTS.md), [cài máy mới](SETUP_VI.md) và [quy trình VPS](DEPLOYMENT.md). Đây là bản public, không chứa database hoặc credential; phải kiểm tra lại Git/VPS trước khi thay đổi.
 
+## Form đăng nhập web và truy cập IP — 12/11/2026 — CHỜ GATE VPS
+
+- Thêm form đăng nhập VI/EN/ZH, sáng/tối, hiện/ẩn mật khẩu, báo lỗi và đếm thời gian khóa; giữ trang đang mở sau đăng nhập. Có nút đăng xuất. Giao diện chỉ tải dữ liệu/tác vụ sau khi xác nhận phiên; API hết phiên đưa về form, không gọi hộp Basic của trình duyệt.
+- Backend dùng lại file hash mật khẩu quản trị đang có, không chuyển mật khẩu vào Git/DB/frontend. Phiên ngẫu nhiên giữ ở RAM tối đa 12 giờ, cookie HttpOnly/SameSite=Strict; HTTPS có Secure, HTTP chỉ cho IP được cấu hình rõ. Đăng xuất, hết hạn hoặc đổi file mật khẩu làm mất hiệu lực phiên. Giữ giới hạn 3 lần thử/5 phút và khóa 15 phút, chặn ghi khác Origin, bảo vệ API/SSE/OpenAPI và ẩn thống kê health khi chưa đăng nhập. Local chưa cấu hình auth vẫn dùng như trước; yêu cầu loopback trực tiếp phục vụ vận hành, request qua proxy phải đăng nhập.
+- File chính: `webui/web_auth.py`, `webui/app.py`, `frontend/src/{App.vue,webAuth.js}`, `components/WebLogin.vue`, `api/request.js`, `layouts/AdminLayout.vue`, `locales/ui.js`. Không thêm dependency. Kiểm hash Unix cần native `crypt`, đã kiểm trên Linux Python 3.10; backend thiếu hỗ trợ hoặc file mật khẩu lỗi trả lỗi đóng, không mở quyền truy cập.
+- Kiểm chứng: **76 Python đạt, 1 skip native Unix trên Windows** (đã kiểm lại bằng smoke Linux), **168 Node đạt**, build Vite đạt. HTTP fixture thực hiện đăng nhập → API kho rỗng → đăng xuất → API bị chặn. Test bao gồm cookie, Origin, giả header proxy, hết hạn/thu hồi phiên, đổi hash, input quá lớn và 8 lần đăng nhập sai đồng thời. DB local giữ nguyên hash. Không thử account/provider/thanh toán thật. Công cụ UI bị chặn vì không xác nhận URL cửa sổ Chrome; chưa xác minh form trên Chrome thật hoặc mobile.
+- Gói private đã stage và smoke hash/phiên trên VPS đạt; **chưa áp dụng** vì có background refresh đang chạy. Giữ Basic và firewall production hiện tại; không restart, hủy job, mở cổng hoặc tự đặt monitor chờ. Sau push cần kiểm lại gate/CAS, backup nguồn + SQLite, bật auth backend trước khi bỏ Basic/mở đúng cổng IP; giữ asset cũ. Rollback đã chuẩn bị và kiểm cú pháp, chưa chạy. Thông tin đích, cấu hình bảo mật và proof chi tiết chỉ giữ trong workbench private.
+
 ## Sửa nhận diện OTP và quét lại lỗi gói — 12/11/2026
 
 - Đăng nhập thông thường giữ lỗi mạng/máy chủ, không chuyển sang đăng ký dự phòng. Chỉ chờ OTP email khi có trạng thái email verification hoặc đúng đường dẫn xác minh; URL thiếu hoặc chuỗi xác minh nằm trong query không đủ bằng chứng. Luồng mật khẩu/2FA và OTP email thực sự vẫn được giữ.

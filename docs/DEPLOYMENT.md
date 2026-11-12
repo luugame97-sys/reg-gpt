@@ -36,6 +36,15 @@ Không in toàn bộ config, environment, database, HTTP header xác thực ho�
 
 ## Công cụ triển khai hiện có và giới hạn
 
+### Cấu hình form đăng nhập web
+
+- `REG_WEB_AUTH_FILE` trỏ tới file Unix htpasswd riêng của máy, dùng hash SHA-512 crypt (`$6$`) hiện có. Không ghi file hash, mật khẩu hoặc IP VPS vào Git. Cấu hình vắng mặt giữ chế độ local cũ; file đã cấu hình mà mất/lỗi không được mở quyền truy cập. Môi trường xác minh phải hỗ trợ native Unix `crypt` (đã thử Linux Python 3.10).
+- Phiên giữ trong bộ nhớ của một tiến trình backend; restart làm người dùng đăng nhập lại. Không cấu hình nhiều worker độc lập cho chế độ phiên này. Cookie chỉ thuộc host hiện tại, HttpOnly/SameSite=Strict; HTTPS có Secure. Đăng xuất xóa phiên phía máy chủ.
+- `REG_WEB_AUTH_HTTP_HOSTS` chỉ nhận danh sách IP cụ thể được người dùng chấp thuận dùng HTTP. Mặc định không cho đăng nhập HTTP từ xa. HTTP truyền thông tin không mã hóa; không mở cổng hay bỏ HTTPS chỉ vì tùy chọn này tồn tại.
+- Chỉ bỏ HTTP Basic ở reverse proxy sau khi backend đã bật form auth và request mô phỏng bên ngoài nhận `401` ở API riêng, không có `WWW-Authenticate`. Kiểm tra proxy chuyển đúng scheme/client IP và giữ giới hạn chống dò mật khẩu. Không giữ bộ khóa Basic cũ chặn trước form mới.
+- Health công khai chỉ có `ok`; tài khoản đã đăng nhập hoặc loopback trực tiếp vẫn nhận thống kê cũ. Kiểm tra auth qua loopback cần thêm header proxy giả lập để không dùng ngoại lệ vận hành. Phiên cookie không được trả trong JSON hoặc log.
+- Chính sách cookie và chống yêu cầu khác Origin tham khảo [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html); kiểm tra fixture và hành vi thực tế vẫn là gate của từng release.
+
 Các helper trên máy cũ ở `_ai_workbench/tools/` dùng chuỗi helper/cấu hình riêng, không phải API public hoặc công cụ portable trong repo. Không chạy nhầm script lịch sử vì tên giống, không đưa chúng lên Git khi chưa loại hết credential/path máy. Khi thiếu helper, agent có thể dùng SSH/SFTP và công cụ sẵn có theo các gate ở trên; script hỗ trợ mới nếu cần đặt trong `_ai_workbench/tools/`, không thêm dependency toàn máy.
 
 Snapshot gần nhất và đường dẫn backup/rollback ở `docs/session_report.md`. Script rollback của một release chỉ dùng cho đúng release đó và trạng thái hash tương ứng. Chưa có kiểm thử khôi phục production thực tế; không tuyên bố rollback đã được chạy thành công chỉ vì kiểm cú pháp đạt.

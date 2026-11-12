@@ -4,13 +4,23 @@ import { useRoute } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useThemeStore } from '@/stores/theme'
 import { usePrivacyStore } from '@/stores/privacy'
-import { Eye, EyeOff } from 'lucide-vue-next'
+import { Eye, EyeOff, LogOut } from 'lucide-vue-next'
+import { ElMessage } from 'element-plus'
+import { webAuthRequest } from '@/webAuth'
 import { useStatsStore } from '@/stores/stats'
 import { useRuntimeStore } from '@/stores/runtime'
 import { useI18nStore, LOCALES, t } from '@/stores/i18n'
 import AppNavigation from '@/components/AppNavigation.vue'
 import { mobileNavigation, matchesNavigation } from '@/navigation'
 import { useTasksStore } from '@/stores/tasks'
+defineProps({ showLogout: Boolean })
+const loggingOut = ref(false)
+async function logout() {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  try { await webAuthRequest('logout', {}); window.location.reload() }
+  catch (_) { ElMessage.error(t('Không kết nối được trang đăng nhập. Vui lòng thử lại.')); loggingOut.value = false }
+}
 const route = useRoute(), theme = useThemeStore(), statsStore = useStatsStore(), runtime = useRuntimeStore(), i18n = useI18nStore()
 const { banner, autoStatus, streamConnected } = storeToRefs(runtime)
 const collapse = ref(localStorage.getItem('nav_collapsed') === '1'), mobileDrawer = ref(false)
@@ -52,6 +62,7 @@ onUnmounted(() => { statsStore.stopPolling(); runtime.disconnectStreams(); tasks
             <button type="button" class="language-button" translate="no" :aria-label="currentLocale.label"><span>{{ currentLocale.code.toUpperCase() }}</span><el-icon :size="13"><ChevronDown /></el-icon></button>
             <template #dropdown><el-dropdown-menu translate="no"><el-dropdown-item v-for="locale in LOCALES" :key="locale.code" :command="locale.code" :disabled="locale.code === i18n.locale">{{ locale.label }}</el-dropdown-item></el-dropdown-menu></template>
           </el-dropdown>
+          <button v-if="showLogout" class="icon-button" type="button" @click="logout" :disabled="loggingOut" :aria-label="t('Đăng xuất')" :title="t('Đăng xuất')"><LogOut :size="18" aria-hidden="true" /></button>
         </div>
       </header>
       <main id="main-content" class="app-content" tabindex="-1">

@@ -102,6 +102,8 @@ async def lifespan(_app):
 
 app = FastAPI(title="GPT Outlook Register WebUI", docs_url=None, redoc_url=None, lifespan=lifespan)
 
+from .web_auth import install_web_auth  # noqa: E402
+
 from .upi import router as UPI_ROUTER  # noqa: E402
 # Keep concrete paths visible to the existing request probes on all FastAPI versions.
 app.router.routes.extend(UPI_ROUTER.routes)
@@ -185,6 +187,10 @@ async def probe_api_requests(request: Request, call_next):
         **details,
     )
     return response
+
+
+# The login guard must wrap probes and business handlers, including SSE.
+install_web_auth(app)
 
 
 # ──────────────────────── Pydantic 模型 ────────────────────────

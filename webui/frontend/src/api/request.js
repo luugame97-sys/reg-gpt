@@ -3,6 +3,7 @@ import { localeTag } from '@/i18n/locale'
 import { getActivePinia } from 'pinia'
 import { useI18nStore } from '@/stores/i18n'
 import { ElMessage } from 'element-plus'
+import { handleWebAuthError } from '@/webAuth'
 
 // ────────────────────────────────────────────────────────────
 // ⭐ 后端地址统一入口
@@ -26,6 +27,7 @@ const http = axios.create({
 http.interceptors.response.use(
   (resp) => resp.data,
   (error) => {
+    handleWebAuthError(error)
     const data = error?.response?.data
     let detail = ''
     if (typeof data?.detail === 'string') {
