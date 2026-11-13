@@ -50,6 +50,7 @@ import { t } from '@/stores/i18n'
 import StatusDot from '@/components/StatusDot.vue'
 import TaskTraffic from '@/components/TaskTraffic.vue'
 import AccountTaskProgress from '@/components/AccountTaskProgress.vue'
+import AccountSecurityDialog from '@/components/AccountSecurityDialog.vue'
 import AccountToolbar from '@/components/AccountToolbar.vue'
 import AccountFolders from '@/components/AccountFolders.vue'
 import AccountFilters from '@/components/AccountFilters.vue'
@@ -58,6 +59,14 @@ import AccountQuota from '@/components/AccountQuota.vue'
 import { readSavedAccountViews } from '@/accountFilters'
 const route = useRoute()
 const router = useRouter()
+const securityDialog = ref(false), securityEmails = ref([]), securityMode = ref('change_2fa')
+function openAccountSecurity(mode, row = null) {
+  const emails = row ? [row.email] : selected.value.map(item => item.email)
+  if (!emails.length) return ElMessage.info('Chọn tài khoản cần thay đổi bảo mật.')
+  if (emails.length > 500) return ElMessage.warning('Tối đa 500 acc mỗi đợt bảo mật.')
+  securityEmails.value = [...new Set(emails)]; securityMode.value = mode; securityDialog.value = true
+}
+function securityCreated(job) { router.push({ path: '/security', query: { job: job.job_id } }) }
 
 const { form } = storeToRefs(useFormStore())
 const { list: proxyList } = storeToRefs(useProxyStore())
@@ -272,6 +281,7 @@ watch([accountTable, rows, selected], () => {
   }
 }, { flush: 'post' })
 function handleRowAction(command, row) {
+  if (command.startsWith('security:')) return openAccountSecurity(command.slice(9), row)
   if (command === 'refresh') doSingleRefresh(row)
   if (command === 'check') doSingleCheckLive(row)
   if (command === 'quota') openSingleTask(row, 'quota_check')
@@ -921,6 +931,7 @@ function handleAccountCheck(command) {
   if (command === 'offers') { toolsOpen.value = !toolsOpen.value; loadZeroSummary() }
 }
 function handleAccountManage(command) {
+  if (command.startsWith('security:')) return openAccountSecurity(command.slice(9))
   if (command === 'assign') openGroupAssignDialog()
   if (command === 'groups') groupManagerVisible.value = true
   if (command === 'columns') detailedColumns.value = !detailedColumns.value
@@ -1923,6 +1934,9 @@ onActivated(() => {
                   <el-dropdown-item command="check"><el-icon><Odometer /></el-icon>Kiểm tra AT…</el-dropdown-item>
                   <el-dropdown-item command="quota" :disabled="refreshJobRunning">Kiểm tra quota</el-dropdown-item>
                   <el-dropdown-item command="refresh" :disabled="refreshJobRunning"><el-icon><Refresh /></el-icon>Làm mới AT…</el-dropdown-item>
+                  <el-dropdown-item command="security:change_2fa" divided><el-icon><ShieldCheck /></el-icon>Đổi 2FA…</el-dropdown-item>
+                  <el-dropdown-item command="security:change_password"><el-icon><Key /></el-icon>Đổi mật khẩu…</el-dropdown-item>
+                  <el-dropdown-item command="security:logout_all">Kick tất cả phiên…</el-dropdown-item>
                   <el-dropdown-item v-if="row.refresh_error?.terminal_auth_error" command="clear_auth_error" :disabled="refreshJobRunning">Cho phép thử lại</el-dropdown-item>
                   <el-dropdown-item v-if="row.refresh_error?.manual_retry_required" command="clear_auth_error" :disabled="refreshJobRunning">Đã xử lý mail · cho phép thử lại</el-dropdown-item>
                   <el-dropdown-item command="edit" divided><el-icon><EditPen /></el-icon>Sửa tài khoản</el-dropdown-item>
@@ -1936,7 +1950,7 @@ onActivated(() => {
           <el-empty :description="activeFilters.length ? 'Không có tài khoản khớp bộ lọc' : 'Chưa có tài khoản. Hãy nhập hoặc đăng ký mới.'" :image-size="70" />
         </template>
       </el-table>
-      <div v-if="mobileView" class="account-mobile-list" v-loading="loading"><article v-for="row in rows" :key="row.email" class="account-mobile-card" :class="{selected:selectedEmails.has(row.email)}"><div class="mobile-account-heading"><el-checkbox :model-value="selectedEmails.has(row.email)" :aria-label="`Chọn ${row.email}`" @change="checked=>toggleAccountSelection(row,checked)"/><div><button type="button" class="account-email-copy" :aria-label="`Sao chép email ${row.email}`" title="Bấm để sao chép email" @click.stop="copyText(row.email)"><span translate="no">{{ row.email }}</span></button></div><el-dropdown :persistent="false" trigger="click" @command="command=>handleRowAction(command,row)"><el-button text :aria-label="`Thao tác mobile với ${row.email}`">•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="copy_ls">Sao chép LS</el-dropdown-item><el-dropdown-item command="copy_at" :disabled="!row.at_len">Sao chép AT</el-dropdown-item><el-dropdown-item command="check" :disabled="refreshJobRunning">Kiểm tra AT…</el-dropdown-item><el-dropdown-item command="quota" :disabled="refreshJobRunning">Kiểm tra quota</el-dropdown-item><el-dropdown-item command="refresh" :disabled="refreshJobRunning">Làm mới AT…</el-dropdown-item><el-dropdown-item command="edit" divided>Sửa tài khoản</el-dropdown-item><el-dropdown-item command="delete" class="danger-menu-item">Xóa tài khoản…</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
+      <div v-if="mobileView" class="account-mobile-list" v-loading="loading"><article v-for="row in rows" :key="row.email" class="account-mobile-card" :class="{selected:selectedEmails.has(row.email)}"><div class="mobile-account-heading"><el-checkbox :model-value="selectedEmails.has(row.email)" :aria-label="`Chọn ${row.email}`" @change="checked=>toggleAccountSelection(row,checked)"/><div><button type="button" class="account-email-copy" :aria-label="`Sao chép email ${row.email}`" title="Bấm để sao chép email" @click.stop="copyText(row.email)"><span translate="no">{{ row.email }}</span></button></div><el-dropdown :persistent="false" trigger="click" @command="command=>handleRowAction(command,row)"><el-button text :aria-label="`Thao tác mobile với ${row.email}`">•••</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="copy_ls">Sao chép LS</el-dropdown-item><el-dropdown-item command="copy_at" :disabled="!row.at_len">Sao chép AT</el-dropdown-item><el-dropdown-item command="check" :disabled="refreshJobRunning">Kiểm tra AT…</el-dropdown-item><el-dropdown-item command="quota" :disabled="refreshJobRunning">Kiểm tra quota</el-dropdown-item><el-dropdown-item command="refresh" :disabled="refreshJobRunning">Làm mới AT…</el-dropdown-item><el-dropdown-item command="security:change_2fa" divided>Đổi 2FA…</el-dropdown-item><el-dropdown-item command="security:change_password">Đổi mật khẩu…</el-dropdown-item><el-dropdown-item command="security:logout_all">Kick tất cả phiên…</el-dropdown-item><el-dropdown-item command="edit" divided>Sửa tài khoản</el-dropdown-item><el-dropdown-item command="delete" class="danger-menu-item">Xóa tài khoản…</el-dropdown-item></el-dropdown-menu></template></el-dropdown></div>
             <div class="mobile-account-meta account-meta-badges">
               <el-tooltip :persistent="false" :content="row.group_name || 'Chưa phân thư mục'" trigger="click"><button type="button" class="account-folder-badge account-meta-badge" :title="row.group_name || 'Chưa phân thư mục'"><el-icon><Folder /></el-icon><span v-if="row.group_name" class="account-meta-label" translate="no">{{ row.group_name }}</span><span v-else class="account-meta-label">Chưa phân thư mục</span></button></el-tooltip>
               <span class="account-country account-meta-badge" :title="rowCountry(row) || 'Chưa có'">{{ rowCountry(row) || '—' }}</span>
@@ -2190,6 +2204,7 @@ onActivated(() => {
       </el-dialog>
 
     </el-card></div></div>
+    <AccountSecurityDialog v-model="securityDialog" :emails="securityEmails" :initial-mode="securityMode" @created="securityCreated"/>
     <AccountFilters v-model="filtersVisible" :value="filterDraft" :groups="groupsSummary.groups" :countries="availableCountries" @apply="applyAdvancedFilters" @save="saveAccountView"/>
     <el-drawer v-model="foldersVisible" title="Thư mục tài khoản" direction="ltr" size="min(320px, 90vw)" class="folders-drawer"><AccountFolders :saving-order="savingFolderOrder" @reorder="saveFolderOrder" :summary="groupsSummary" :current="groupFilter" :saved="savedAccountViews" @select="selectGroup" @create="promptCreateGroup([])" @rename="promptRenameGroup" @delete="handleDeleteGroup" @move="moveFolderAccounts" @saved="applyAdvancedFilters" @remove-saved="removeSavedView"/></el-drawer>
   </div>

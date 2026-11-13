@@ -8,6 +8,7 @@ export const navigation = [
   ] },
   { path: '/tasks', label: '任务中心', icon: 'Activity', match: ['/tasks', '/runs'] },
   { path: '/upi', label: 'UPI / Plus', icon: 'ScanSearch', match: ['/upi'] },
+  { path: '/security', label: 'Bảo mật acc', icon: 'ShieldCheck', match: ['/security'] },
   { id: 'settings', label: '设置', icon: 'Settings', children: [
     { path: '/settings/mail', label: '邮箱配置', icon: 'Mail' },
     { path: '/settings/sms', label: '接码配置', icon: 'Smartphone' },

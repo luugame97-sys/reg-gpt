@@ -56,6 +56,10 @@ const routes = [
     meta: { title: 'UPI / Plus', icon: 'ScanSearch' },
   },
   {
+    path: '/security', name: 'security', component: () => import('@/views/AccountSecurity.vue'),
+    meta: { title: 'Bảo mật acc', icon: 'ShieldCheck', group: '数据' },
+  },
+  {
     path: '/runs',
     name: 'runs',
     component: () => import('@/views/Runs.vue'),

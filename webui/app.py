@@ -91,8 +91,10 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 @asynccontextmanager
 async def lifespan(_app):
     from .token_refresh_jobs import JOBS
+    from .account_security import JOBS as SECURITY_JOBS
     from .upi_followup import CONTROLLER as UPI_FOLLOWUP
     await run_in_threadpool(JOBS.initialize)
+    await run_in_threadpool(SECURITY_JOBS.initialize)
     await run_in_threadpool(UPI_FOLLOWUP.start)
     try:
         yield
@@ -107,6 +109,9 @@ from .web_auth import install_web_auth  # noqa: E402
 from .upi import router as UPI_ROUTER  # noqa: E402
 # Keep concrete paths visible to the existing request probes on all FastAPI versions.
 app.router.routes.extend(UPI_ROUTER.routes)
+
+from .account_security import router as SECURITY_ROUTER  # noqa: E402
+app.router.routes.extend(SECURITY_ROUTER.routes)
 
 
 @app.middleware("http")

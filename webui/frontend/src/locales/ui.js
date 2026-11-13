@@ -1,5 +1,17 @@
 // UI phrases and templates. Keep placeholders identical in all three languages.
 const upiPhrases = [
+  ['Bảo mật acc','Account security','账号安全'],
+  ['Đổi 2FA','Rotate 2FA','更换 2FA'],
+  ['Đổi 2FA…','Rotate 2FA…','更换 2FA…'],
+  ['Đổi mật khẩu','Change password','修改密码'],
+  ['Đổi mật khẩu…','Change password…','修改密码…'],
+  ['Đổi mật khẩu + 2FA','Change password + 2FA','修改密码和 2FA'],
+  ['Kick tất cả phiên','Sign out all sessions','退出所有会话'],
+  ['Kick tất cả phiên…','Sign out all sessions…','退出所有会话…'],
+  ['Kiểm tra đăng nhập / gói','Check sign-in / plan','检查登录和套餐'],
+  ['Tiếp tục xác minh','Continue verification','继续验证'],
+  ['Tải checkpoint','Download checkpoint','下载恢复检查点'],
+  ['Xuất acc thành công','Export successful accounts','导出成功账号'],
   ['Đăng nhập workspace','Sign in to your workspace','登录工作区'],
   ['Dùng tài khoản quản trị để tiếp tục.','Use your administrator account to continue.','使用管理员账号继续。'],
   ['Tên đăng nhập','Username','用户名'],

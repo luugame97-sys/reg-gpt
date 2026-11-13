@@ -38,6 +38,8 @@ Chỉ khi cần tính năng dùng trình duyệt, tải thêm engine tương ứ
 .\.venv\Scripts\python.exe -m playwright install chromium
 ```
 
+Tab **Bảo mật acc** dùng Camoufox cho đổi mật khẩu và kick phiên. Thư viện đã có trong `requirements.txt`; cần chạy `camoufox fetch` bằng đúng môi trường Python/tài khoản chạy dịch vụ trước khi dùng. Tác vụ bảo mật chỉ dùng browser đã cài, không tự tải browser hoặc addon. Luồng đổi 2FA dùng đăng nhập giao thức hiện có. Database còn chứa checkpoint mật khẩu/2FA nhạy cảm; giữ cùng bản backup riêng, không chuyển qua Git.
+
 ## 4. Linux / macOS
 
 ```bash
