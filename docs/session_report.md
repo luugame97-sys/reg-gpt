@@ -1,4 +1,4 @@
-# Trạng thái bàn giao — 14/11/2026
+# Trạng thái bàn giao — 20/11/2026
 
 Đọc cùng [AGENTS.md](../AGENTS.md), [cài máy mới](SETUP_VI.md) và [quy trình VPS](DEPLOYMENT.md). Đây là bản public, không chứa database hoặc credential; phải kiểm tra lại Git/VPS trước khi thay đổi.
 
@@ -8,7 +8,7 @@
 - Sửa việc lấy lại trạng thái OTP cũ khi phản hồi sau mật khẩu/MFA chỉ chứa URL tiếp theo. OTP thực sự sau mật khẩu/MFA vẫn được xử lý theo phản hồi mới. Lỗi HTTP/mạng ở bước chuyển phương thức được báo đúng nguyên nhân.
 - File chính `auth_flow.py`, `tests/test_email_password_fallback.py`, fixture trong `tests/test_account_auth_errors.py`. **240 Python liên quan đạt**, kiểm tra diff/whitespace đạt. Các test dùng dữ liệu giả và chặn mạng, chưa E2E bằng tài khoản OpenAI thật.
 - Lỗi OTP đã lưu cần thao tác **Đã xử lý mail · cho phép thử lại** ở menu tài khoản trước khi làm mới lại, hoặc tùy chọn kiểm tra lại OTP của đợt kiểm tra gói. Việc kiểm tra lại do người dùng chủ động bắt đầu.
-- Đích triển khai phiên này là bản local theo yêu cầu. Đã chuẩn bị backup nhất quán, kiểm tra gate và đối chiếu baseline; trạng thái apply sẽ cập nhật sau xác minh.
+- Source runtime commit `6eb4699600bf385425dcd23731d07b9382ad37cd` đã push và đối chiếu `origin/main`. Release local **`email-password-20261120`** đã áp dụng theo yêu cầu, khởi động lại khi gate idle; source SHA-256 khớp, health/entry 200, SQLite quick_check đạt và hash dữ liệu đầy đủ của 14 bảng được bảo vệ giữ nguyên. Backup nguồn/SQLite nhất quán ở `_ai_workbench/backups/email-password-20261120` của bản local; helper rollback có gate/CAS đã kiểm cú pháp, chưa thực thi rollback.
 
 ## Tích hợp bảo mật tài khoản — 14/11/2026 — ĐÃ TRIỂN KHAI
 
