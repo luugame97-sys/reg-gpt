@@ -2,6 +2,14 @@
 
 Đọc cùng [AGENTS.md](../AGENTS.md), [cài máy mới](SETUP_VI.md) và [quy trình VPS](DEPLOYMENT.md). Đây là bản public, không chứa database hoặc credential; phải kiểm tra lại Git/VPS trước khi thay đổi.
 
+## Chọn mật khẩu từ màn hình OTP email — 20/11/2026
+
+- Khi đăng nhập lại gặp màn hình OTP email, đọc liên kết `/log-in/password` được cung cấp trong cùng phiên rồi tiếp tục xác minh mật khẩu và MFA hiện có. Với giao diện dựng bằng JavaScript, kiểm tra `login_methods` của đúng email, chế độ `passwordless_login` và trạng thái reauth trước khi chọn mật khẩu. Đối chiếu hành vi với bundle công khai của OpenAI ngày 20/11/2026.
+- Sửa việc lấy lại trạng thái OTP cũ khi phản hồi sau mật khẩu/MFA chỉ chứa URL tiếp theo. OTP thực sự sau mật khẩu/MFA vẫn được xử lý theo phản hồi mới. Lỗi HTTP/mạng ở bước chuyển phương thức được báo đúng nguyên nhân.
+- File chính `auth_flow.py`, `tests/test_email_password_fallback.py`, fixture trong `tests/test_account_auth_errors.py`. **240 Python liên quan đạt**, kiểm tra diff/whitespace đạt. Các test dùng dữ liệu giả và chặn mạng, chưa E2E bằng tài khoản OpenAI thật.
+- Lỗi OTP đã lưu cần thao tác **Đã xử lý mail · cho phép thử lại** ở menu tài khoản trước khi làm mới lại, hoặc tùy chọn kiểm tra lại OTP của đợt kiểm tra gói. Việc kiểm tra lại do người dùng chủ động bắt đầu.
+- Đích triển khai phiên này là bản local theo yêu cầu. Đã chuẩn bị backup nhất quán, kiểm tra gate và đối chiếu baseline; trạng thái apply sẽ cập nhật sau xác minh.
+
 ## Tích hợp bảo mật tài khoản — 14/11/2026 — ĐÃ TRIỂN KHAI
 
 - Thêm một tab **Bảo mật acc** theo giao diện hiện tại: chọn acc/thư mục qua nhiều trang, dán email có sẵn hoặc nhập combo vào kho, kiểm tra đăng nhập/gói, đổi mật khẩu, đổi 2FA, đổi cả hai và kick mọi phiên ChatGPT. Quản lý acc có lối tắt ở menu từng acc PC/mobile và menu các acc đã chọn. Tối đa 500 acc/đợt, 1–10 luồng; chỉ thao tác đúng danh sách đã xác nhận.

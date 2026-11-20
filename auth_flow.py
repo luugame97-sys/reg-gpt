@@ -19,6 +19,7 @@ import subprocess
 import time
 import uuid
 from datetime import datetime
+from html.parser import HTMLParser
 from typing import Optional, Any
 from urllib.parse import urlparse, parse_qs, parse_qsl, urljoin, urlencode, urlunparse
 
@@ -90,6 +91,31 @@ def _looks_like_identity_verification_url(url: str) -> bool:
     if not url:
         return False
     return "/verify-your-identity" in url
+
+
+def _looks_like_password_login_url(url: str) -> bool:
+    parsed = urlparse(url)
+    return (parsed.scheme == "https" and parsed.netloc == "auth.openai.com"
+            and parsed.path.rstrip("/") == "/log-in/password")
+
+
+class _PasswordLoginPage(HTMLParser):
+    """Read the actual password link and input, independently of UI language."""
+
+    def __init__(self, page_url: str):
+        super().__init__()
+        self.page_url = page_url
+        self.password_url = ""
+        self.has_password_input = False
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "a" and attributes.get("href") and not self.password_url:
+            target = urljoin(self.page_url, attributes["href"])
+            if _looks_like_password_login_url(target):
+                self.password_url = target
+        if tag == "input" and (attributes.get("type") or "").lower() == "password":
+            self.has_password_input |= "disabled" not in attributes
 
 
 # ── RFC 6238 TOTP 实现（用于 mfa-challenge 计算动态码）────────────
@@ -1165,6 +1191,7 @@ class AuthFlow:
             referer="https://auth.openai.com/log-in",
             trace_step="authorize_continue_login_codex",
         )
+        step = self._prefer_password_from_email_otp(step, password if pw_is_real else "")
         page_type = self._extract_page_type(step)
         continue_url = self._normalize_continue_url(self._extract_continue_url_from_step(step))
 
@@ -3141,6 +3168,73 @@ class AuthFlow:
         random.shuffle(pwd_list)
         return "".join(pwd_list)
 
+    def _prefer_password_from_email_otp(self, step: dict, password: str) -> dict:
+        """Follow the offered password link before waiting for a login email code."""
+        page_type = self._extract_page_type(step).lower()
+        continue_url = self._extract_continue_url_from_step(step)
+        if not password or not (page_type == "email_otp_verification"
+                                or _looks_like_email_verify_url(continue_url)):
+            return step
+
+        email_url = (urljoin("https://auth.openai.com", continue_url)
+                     if _looks_like_email_verify_url(continue_url)
+                     else "https://auth.openai.com/email-verification")
+        response = self.session.get(
+            email_url, headers=self._navigation_headers(), timeout=30, allow_redirects=False,
+        )
+        self._trace_http("login_email_password_option", response)
+        if response.status_code == 200:
+            page = _PasswordLoginPage(email_url)
+            page.feed(response.text or "")
+            password_url = page.password_url
+        elif response.status_code in (301, 302, 303, 307, 308):
+            password_url = urljoin(email_url, response.headers.get("Location", ""))
+        else:
+            raise RuntimeError(f"Không đọc được lựa chọn đăng nhập: HTTP {response.status_code}")
+
+        password_offered_by_session = False
+        page_data = step.get("page") or {}
+        payload = page_data.get("payload") or {}
+        if not password_url and payload.get("email_verification_mode") == "passwordless_login":
+            response = self.session.get(
+                "https://auth.openai.com/api/accounts/client_auth_session_dump",
+                headers=self._common_headers(email_url), timeout=30, allow_redirects=False,
+            )
+            self._trace_http("login_email_password_methods", response)
+            if response.status_code != 200:
+                raise RuntimeError(f"Không đọc được phương thức đăng nhập: HTTP {response.status_code}")
+            session_data = response.json().get("client_auth_session") or {}
+            methods = session_data.get("login_methods") or []
+            password_offered_by_session = (
+                session_data.get("email_verification_mode") == "passwordless_login"
+                and not session_data.get("reauth")
+                and (session_data.get("email") or "").casefold() == self.result.email.casefold()
+                and any(method.get("type") == "password" for method in methods if isinstance(method, dict))
+            )
+            if password_offered_by_session:
+                password_url = "https://auth.openai.com/log-in/password"
+
+        if not password_url or not _looks_like_password_login_url(password_url):
+            return step
+
+        headers = self._navigation_headers()
+        headers["Referer"] = email_url
+        response = self.session.get(password_url, headers=headers, timeout=30, allow_redirects=False)
+        self._trace_http("login_email_continue_with_password", response)
+        if response.status_code in (301, 302, 303, 307, 308):
+            target = urljoin(password_url, response.headers.get("Location", ""))
+            if _looks_like_email_verify_url(target):
+                return step
+        if response.status_code != 200:
+            raise RuntimeError(f"Không mở được trang nhập mật khẩu: HTTP {response.status_code}")
+
+        page = _PasswordLoginPage(password_url)
+        page.feed(response.text or "")
+        if not page.has_password_input and not password_offered_by_session:
+            return step
+        logger.info("Đăng nhập: chọn Tiếp tục với mật khẩu từ màn hình OTP email")
+        return {"page": {"type": "login_password"}, "continue_url": password_url}
+
     def login_password_verify(self, password: str) -> dict:
         """已有账号密码登录一步（/password/verify）。"""
         headers = self._common_headers("https://auth.openai.com/log-in/password")
@@ -4799,6 +4893,12 @@ class AuthFlow:
                 if mode == "passwordless_signup" or page_type == "create_account_password" or "/create-account/password" in continue_url:
                     raise AccountCredentialError("account_not_found")
 
+                login_step = self._prefer_password_from_email_otp(login_step, self.result.password)
+                page_type = (self._extract_page_type(login_step) or "").lower()
+                continue_url = self._normalize_continue_url(
+                    self._extract_continue_url_from_step(login_step)
+                )
+
                 if page_type == "login_password" or "/log-in/password" in (continue_url or ""):
                     logger.info("登录分支: login_password -> password/verify")
                     # 命中已有账号 password 路径：标记之，让 kickoff_otp_delivery 走 resend
@@ -4867,9 +4967,6 @@ class AuthFlow:
                 mode = (self._existing_email_verification_mode or "").lower()
                 if mode == "passwordless_signup":
                     raise AccountCredentialError("account_not_found")
-        else:
-            page_type = (page_type or self._existing_page_type or "").lower()
-            mode = (mode or self._existing_email_verification_mode or "").lower()
 
         need_email_otp = page_type == "email_otp_verification" or _looks_like_email_verify_url(continue_url)
         if not continue_url and not need_email_otp:

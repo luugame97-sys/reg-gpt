@@ -50,6 +50,10 @@ def protocol_fixture(monkeypatch, secret='JBSWY3DPEHPK3PXP'):
     flow = auth_flow.AuthFlow.__new__(auth_flow.AuthFlow)
     flow.result = SimpleNamespace(email='', password='', totp_secret=secret)
     flow._account_callback = None
+    flow.session = Mock()
+    flow.session.get.return_value = SimpleNamespace(status_code=200, text='', headers={})
+    flow._navigation_headers = Mock(return_value={})
+    flow._trace_http = Mock()
     for name in ['check_proxy', 'warmup']:
         setattr(flow, name, Mock(return_value=True))
     for name in ['get_csrf_token', 'get_auth_url', 'auth_oauth_init', 'get_sentinel_token']:
